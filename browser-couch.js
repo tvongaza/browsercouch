@@ -561,6 +561,62 @@ var BrowserCouch = function(opts){
   }
 
 
+  // == Map Datastructure with Sequence Index ==
+  // 
+  // This datastructure acts similarly to Couch's doubly
+  // indexed tree, it maintains 2 indices - a document id
+  // by which json objects are referenced, and a sequence
+  // id - an integer that indicates the order in which objects
+  // were updated, allowing efficient replication.
+  //
+  bc.sequencingMap = function(){
+    var dict = new bc._Dictionary();
+    var seq = {};
+    
+    var sm = {
+      has : function(key){
+        return dict.has(key);
+      },
+      getKeys : function(){
+        return dict.getKeys();
+      },
+      get : function(key){
+        return dict.get(key);
+      },
+      values : function(){
+        return dict.values();
+      },
+      set : function(key, value){
+        return dict.set(key, value);
+      },
+      remove : function(key){
+        return dict.remove(key);
+      },
+      clear : function(){
+        return dict.clear();
+      },
+      pickle : function(){
+        return dict.pickle();
+      },
+      unpickle : function(obj){
+        return dict.unpickle();
+      },
+      
+      // === Seq Methods
+      since : function(seq){
+        return [];
+      }
+      
+      bySeq : function(seq){
+        return {};
+      }
+      
+      
+    };
+    return sm;
+    
+  }
+
   // == Database Wrapper Interface == 
   //
   // A basic database interface. Implementing objects
