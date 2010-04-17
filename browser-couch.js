@@ -571,7 +571,8 @@ var BrowserCouch = function(opts){
   //
   bc.sequencingMap = function(){
     var dict = new bc._Dictionary();
-    var seq = {};
+    var seqIndex = {};
+    var curr = 0;
     
     var sm = {
       has : function(key){
@@ -586,29 +587,55 @@ var BrowserCouch = function(opts){
       values : function(){
         return dict.values();
       },
+      
       set : function(key, value){
+        if (dict.has(key)){
+          var old = this.byDoc(dict.get(key));
+          delete seqIndex[old];
+        }
+        seqIndex[curr] = key;
+        curr += 1;
         return dict.set(key, value);
       },
       remove : function(key){
+        //TODO - why would this be called?
         return dict.remove(key);
       },
       clear : function(){
+        //TODO - why would this be called?
         return dict.clear();
       },
       pickle : function(){
+        dict.set('_seqIndex', seqIndex);
         return dict.pickle();
       },
       unpickle : function(obj){
-        return dict.unpickle();
+        dict.unpickle(obj);
+        seqIndex = dict['_seqIndex');
       },
       
       // === Seq Methods
       since : function(seq){
-        return [];
-      }
+        var r = [];
+        for (var s in seqIndex){
+          if (s > seq){
+            r.push(this.bySeq(s));
+          }
+        }
+        return r;
+      },
       
       bySeq : function(seq){
-        return {};
+        return dict.get(seqIndex[seq]);
+      },
+      
+      byDoc : function(_id){
+        //eww,
+        for (k in seqIndex){
+          if (seqIndex[k]['_id'] == _id)
+            return k;
+        }
+        return null;
       }
       
       
