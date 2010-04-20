@@ -570,7 +570,7 @@ var BrowserCouch = function(opts){
   // were updated, allowing efficient replication.
   //
   bc.sequencingMap = function(){
-    var dict = new bc._Dictionary();
+    var dict = bc.sequencingMap();
     var seqIndex = {};
     var curr = 0;
     
@@ -611,7 +611,7 @@ var BrowserCouch = function(opts){
       },
       unpickle : function(obj){
         dict.unpickle(obj);
-        seqIndex = dict['_seqIndex');
+        seqIndex = dict['_seqIndex'];
       },
       
       // === Seq Methods
