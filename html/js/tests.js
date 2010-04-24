@@ -120,7 +120,7 @@ var Tests = {
   },
   _setupTestDb: function(cb) {
     var documents = this._testDbContents;
-    var db = BrowserCouch("blarg", {storage: new BrowserCouch.FakeStorage()});
+    var db = BrowserCouch("blarg", {storage: new BrowserCouch.LocalStorage()});
     db.onload(function() {
       db.wipe(
         function() {

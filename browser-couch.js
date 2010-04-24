@@ -511,6 +511,12 @@ var BrowserCouch = function(opts){
         keys.push(key);
     }
 
+	this.clone = function(){
+		var n = new bc._Dictionary();
+		n.unpickle(this.pickle());
+		return n;
+	}
+
     this.has = function Dictionary_has(key) {
       return (key in dict);
     };
@@ -570,7 +576,7 @@ var BrowserCouch = function(opts){
   // were updated, allowing efficient replication.
   //
   bc.sequencingMap = function(){
-    var dict = bc.sequencingMap();
+    var dict = new bc._Dictionary();
     var seqIndex = {};
     var curr = 0;
     
@@ -589,13 +595,13 @@ var BrowserCouch = function(opts){
       },
       
       set : function(key, value){
-        if (dict.has(key)){
-          var old = this.byDoc(dict.get(key));
-          delete seqIndex[old];
+      	var h = dict.get(key) && sm.byDoc(dict.get(key));
+        if (h){
+          delete seqIndex[h];
         }
         seqIndex[curr] = key;
         curr += 1;
-        return dict.set(key, value);
+        dict.set(key, value);
       },
       remove : function(key){
         //TODO - why would this be called?
@@ -606,16 +612,20 @@ var BrowserCouch = function(opts){
         return dict.clear();
       },
       pickle : function(){
-        dict.set('_seqIndex', seqIndex);
-        return dict.pickle();
+        var n = dict.clone()
+        n.set('_seqIndex', seqIndex);
+        return n.pickle();
       },
       unpickle : function(obj){
         dict.unpickle(obj);
-        seqIndex = dict['_seqIndex'];
+        seqIndex = dict['_seqIndex'] || {};
+        dict.remove('_seqIndex');
+        console.log(dict);
       },
       
       // === Seq Methods
       since : function(seq){
+        seq = seq || Math.min(dict.getKeys());
         var r = [];
         for (var s in seqIndex){
           if (s > seq){
@@ -632,7 +642,7 @@ var BrowserCouch = function(opts){
       byDoc : function(_id){
         //eww,
         for (k in seqIndex){
-          if (seqIndex[k]['_id'] == _id)
+          if (seqIndex[k]['_id'] === _id)
             return k;
         }
         return null;
@@ -656,14 +666,13 @@ var BrowserCouch = function(opts){
   bc.BrowserDatabase = function(name, storage, cb, options) {
     var self = {},
         dbName = 'BrowserCouch_DB_' + name,
-        dict = new bc._Dictionary(),
+        dict = bc.sequencingMap(),
         syncManager, 
         
         commitToStorage = function (cb) {
           storage.put(dbName, dict.pickle(), cb || function(){});  
         };
     self.chgs = []; //TODO - this is until I get seq working.
-   
     self.wipe = function DB_wipe(cb) {
       dict.clear();
       commitToStorage(cb);
@@ -817,8 +826,8 @@ var BrowserCouch = function(opts){
         });
     };
     
-    self.getChanges = function(cb){
-      cb({results: dict.values()});
+    self.getChanges = function(cb, seq){
+      cb({results: dict.since(seq)});
     }
       
     storage.get(
@@ -893,7 +902,7 @@ var BrowserCouch = function(opts){
           // - In future we need to store the conflicts in the doc
           var i = 0;
           for (var d in data.results){
-            target.get(data.results[d]._id, function(doc){
+            target.get(data.results[d].id, function(doc){
               if (doc){
                 source.put(doc, function(){
                   i ++;
