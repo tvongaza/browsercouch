@@ -620,20 +620,24 @@ var BrowserCouch = function(opts){
         dict.unpickle(obj);
         seqIndex = dict['_seqIndex'] || {};
         dict.remove('_seqIndex');
-        console.log(dict);
       },
       
       // === Seq Methods
       since : function(seq){
-        seq = seq || Math.min(dict.getKeys());
+        seq = seq || Math.min(dict.getKeys() || 0);
         var r = [];
         for (var s in seqIndex){
           if (s > seq){
-            r.push(this.bySeq(s));
+            r.push({seq: s, id : this.bySeq(s)});
           }
         }
+        console.log(r);
         return r;
       },
+      
+      lastSeq : function(){
+      	return curr-1;
+      },	
       
       bySeq : function(seq){
         return dict.get(seqIndex[seq]);
@@ -672,7 +676,6 @@ var BrowserCouch = function(opts){
         commitToStorage = function (cb) {
           storage.put(dbName, dict.pickle(), cb || function(){});  
         };
-    self.chgs = []; //TODO - this is until I get seq working.
     self.wipe = function DB_wipe(cb) {
       dict.clear();
       commitToStorage(cb);
@@ -705,12 +708,7 @@ var BrowserCouch = function(opts){
           obj._rev = "" + (iter+1) +  
             obj._rev.slice(obj._rev.indexOf("-"));
         }
-        if(options && (!options.noSync))
-          self.chgs.push(obj)
         dict.set(obj._id, obj);
-        
-        //If new object 
-        self.seq +=1;
           
       }
     
@@ -827,7 +825,10 @@ var BrowserCouch = function(opts){
     };
     
     self.getChanges = function(cb, seq){
-      cb({results: dict.since(seq)});
+      cb({
+      	results: dict.since(seq),
+      	last_seq : dict.lastSeq()
+      	});
     }
       
     storage.get(
@@ -918,7 +919,7 @@ var BrowserCouch = function(opts){
         }
       });   
       
-      
+      /* //Should be symetrical
       // ==== Send Changes ====
       // We'll ultimately use the bulk update methods, but for
       // now, just iterate through the queue with a req for each
@@ -927,7 +928,7 @@ var BrowserCouch = function(opts){
           target.put(this);
         });
       });
-         
+      */    
     }
     
     _sync();
@@ -986,7 +987,7 @@ var BrowserCouch = function(opts){
       sync : function(target, syncOpts){
         self.onload(function(){
             var cb = function(rdb){
-              bc.sync(self, rdb, syncOpts);  
+              bc.sync(self, rdb, syncOpts);
             };
                 
             if (target.indexOf(":")>-1 && target.split(":")[0] === "BrowserCouch"){
