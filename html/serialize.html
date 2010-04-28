@@ -30,7 +30,7 @@ $(function(){
 			console.log('updated');
 			update();	
 			}, 
-		continuous:false, 
+		continuous:true, 
 		timeout:10000
 	};
 	
@@ -49,6 +49,8 @@ $(function(){
 	
 	db.sync("http://localhost:5984/bar", revSyncParams);
 	db.sync("http://localhost:5984/foo", revSyncParams);
+	
+	
 	
 	db.onload(function(db){
 			console.log('Database got')

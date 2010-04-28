@@ -599,7 +599,7 @@ var BrowserCouch = function(opts){
         if (h){
           delete seqIndex[h];
         }
-        seqIndex["" + curr] = key;
+        seqIndex[curr] = key;
         curr += 1;
         dict.set(key, value);
       },
@@ -627,14 +627,13 @@ var BrowserCouch = function(opts){
       	if (!seqIndex){
       		return []
       	}
-        seq = seq || Math.min.apply(Math, sm.seqs());
+        seq = seq || 0;
         var r = [];
         for (var s in seqIndex){
-          if (parseInt(s) > seq){
+          if (s > seq){
             r.push({seq: s, id : sm.bySeq(s)});
           }
         }
-        console.log("!", r, seq, seqIndex, sm.seqs());
         return r;
       },
       
@@ -643,18 +642,7 @@ var BrowserCouch = function(opts){
       },	
       
       bySeq : function(seq){
-        return dict.get(seqIndex[seq]);
-      },
-      
-      seqs : function(){
-        console.log("@@@", x, seqIndex, seqIndex.length);
-      	var res = []; 	
-      	for (var x in seqIndex){
-          console.log("**");
-      	  res.push(x);
-      	}
-      	console.log("WTF", seqIndex[0]);
-      	return res;
+        return dict.get(seqIndex["" + seq]);
       },	
       
       byDoc : function(_id){
@@ -895,7 +883,7 @@ var BrowserCouch = function(opts){
       // the TODO list.
       
       getChanges : function(cb){
-      	console.log("_changes", url);
+      	console.log("_changes", this.url);
         var url = this.url + "/_changes";
         $.getJSON(url, {since : rs.seq}, function(data){
           cb(data);               
