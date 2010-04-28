@@ -30,11 +30,26 @@ $(function(){
 			console.log('updated');
 			update();	
 			}, 
-		continuous:true, 
+		continuous:false, 
 		timeout:10000
 	};
-	db.sync("http://localhost:5984/bar", syncParams)
+	
+	db.sync("http://localhost:5984/bar", syncParams);
 	db.sync("http://localhost:5984/foo", syncParams);
+	
+	var revSyncParams = {
+		update: function(){
+			console.log('updated');
+			update();	
+			}, 
+		continuous:false, 
+		timeout:10000,
+		reverse:true
+	};
+	
+	db.sync("http://localhost:5984/bar", revSyncParams);
+	db.sync("http://localhost:5984/foo", revSyncParams);
+	
 	db.onload(function(db){
 			console.log('Database got')
 			update = function(){

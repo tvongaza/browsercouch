@@ -599,7 +599,7 @@ var BrowserCouch = function(opts){
         if (h){
           delete seqIndex[h];
         }
-        seqIndex[curr] = key;
+        seqIndex["" + curr] = key;
         curr += 1;
         dict.set(key, value);
       },
@@ -624,14 +624,17 @@ var BrowserCouch = function(opts){
       
       // === Seq Methods
       since : function(seq){
-        seq = seq || Math.min(dict.getKeys() || 0);
+      	if (!seqIndex){
+      		return []
+      	}
+        seq = seq || Math.min.apply(Math, sm.seqs());
         var r = [];
         for (var s in seqIndex){
-          if (s > seq){
-            r.push({seq: s, id : this.bySeq(s)});
+          if (parseInt(s) > seq){
+            r.push({seq: s, id : sm.bySeq(s)});
           }
         }
-        console.log(r);
+        console.log("!", r, seq, seqIndex, sm.seqs());
         return r;
       },
       
@@ -642,6 +645,17 @@ var BrowserCouch = function(opts){
       bySeq : function(seq){
         return dict.get(seqIndex[seq]);
       },
+      
+      seqs : function(){
+        console.log("@@@", x, seqIndex, seqIndex.length);
+      	var res = []; 	
+      	for (var x in seqIndex){
+          console.log("**");
+      	  res.push(x);
+      	}
+      	console.log("WTF", seqIndex[0]);
+      	return res;
+      },	
       
       byDoc : function(_id){
         //eww,
@@ -854,10 +868,12 @@ var BrowserCouch = function(opts){
       seq : 0,
       
       get : function(id, cb){
+      	console.log("GET:", id, url);
         $.getJSON(this.url + "/" + id, {}, cb || function(){}); 
       },
       
       put : function(doc, cb, options){       
+        console.log("PUT:", doc, url);
         $.ajax({
           url : this.url + "/" + doc._id, 
           data : JSON.stringify(doc),
@@ -879,6 +895,7 @@ var BrowserCouch = function(opts){
       // the TODO list.
       
       getChanges : function(cb){
+      	console.log("_changes", url);
         var url = this.url + "/_changes";
         $.getJSON(url, {since : rs.seq}, function(data){
           cb(data);               
@@ -897,6 +914,7 @@ var BrowserCouch = function(opts){
     var _sync = function(){  
       // ==== Get Changes ====
       target.getChanges(function(data){
+      	console.log(data);
         if (data && data.results){
           // ==== Merge new data back in ====
           // TODO, screw it, for now we'll assume the servers right.
@@ -987,7 +1005,11 @@ var BrowserCouch = function(opts){
       sync : function(target, syncOpts){
         self.onload(function(){
             var cb = function(rdb){
-              bc.sync(self, rdb, syncOpts);
+              if (syncOpts.reverse){
+                bc.sync(rdb, self, syncOpts);
+              } else{
+              	bc.sync(self, rdb, syncOpts);
+              }	
             };
                 
             if (target.indexOf(":")>-1 && target.split(":")[0] === "BrowserCouch"){
