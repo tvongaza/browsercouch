@@ -449,6 +449,22 @@ var BrowserCouch = function(opts){
       db[name] = deepCopy(obj);
       cb();
     };
+    
+    this.remove = function(name, cb){
+      delete db[name];
+      if(cb){cb();}
+    }
+    
+    this.keys = function(prefix, cb){
+      var out = [];
+      for (var i in db){
+        if (i.match("^"+prefix)===prefix){ // i starts with prefix
+          out.push(i);
+        }  
+      }
+      cb(out);
+    }
+    
   };
   
   // === {{{LocalStorage}}} ===
@@ -490,6 +506,23 @@ var BrowserCouch = function(opts){
           cb();
         });
     };
+    
+    this.remove = function(name, cb){
+      delete storage[name];
+      if(cb){cb();}
+    
+    }
+    
+    this.keys = function(prefix, cb){
+      var out = [];
+      for (var i in storage){
+        if (i.match("^"+prefix)===prefix){ // i starts with prefix
+          out.push(i.slice(prefix.length, i.length));
+        }  
+      }
+      cb(out);
+    }
+    
   }
   
   bc.LocalStorage.isAvailable = (this.location &&
@@ -508,24 +541,60 @@ var BrowserCouch = function(opts){
   // TODO, rename this
   bc.BrowserDatabase = function(name, storage, cb, options) {
     var self = {},
-        dbName = 'BrowserCouch_DB_' + name,
-        dict = bc.sequencingMap(),
-        syncManager, 
+        dbName = 'BC_DB_' + name,
+        seqPrefix = dbName + '__seq_',
+        docPrefix = dbName + '_doc_',
+        syncManager;
+      
+    var seqs = function(cb){
+      storage.keys(seqPrefix, cb);
+    }
+    
+    var removeBySeq = function(seq){
+      storage.get(seq, function(docId){
+        storage.remove(docId);
+        storage.remove(seq);
+      });
+    }
+    
+    var docsToSeqs = function(seq, cb){
+      var out = {},
+          i=0;
+          
+      seqs(function(sqs){
+        for (var s in sqs){
+          storage.get(s, function(docId){
+            out[docId] = seq;
+            i+=1;
+            if (i == sqs.length){
+              cb(out)
+            }      
+          });
+        }
+      });
+    };
+    
+    var lastSeq = function(cb){
+      seqs(seqPrefix, function(sqs){
+          
+      });
+    };
+    
+    var newSeq = function(cb){
+      lastSeq(function(s){cb(s+1)});
+    }    
         
-        commitToStorage = function (cb) {
-          storage.put(dbName, dict.pickle(), cb || function(){});  
-        };
     self.wipe = function DB_wipe(cb) {
-      dict.clear();
-      commitToStorage(cb);
+      seqs(function(sqs){
+        for (var seq in sqs){
+          removeBySeq(seq);
+        }
+      });
     };
 
     self.get = function DB_get(id, cb) {
       cb = cb || function(){}
-      if (dict.has(id))
-        cb(dict.get(id));
-      else
-        cb(null);
+      storage.get(docPrefix + id, cb);
     };
     
     // === {{{PUT}}} ===
@@ -536,8 +605,24 @@ var BrowserCouch = function(opts){
     //
     // It creates or updates a document
     self.put = function DB_put(document, cb, options) {
+      
       options = options || {};
+      
       var putObj = function(obj){
+        // Does the object exist?
+        newSeq(function(s){
+          docsToSeqs(function(dts){
+            if (dts[docPrefix + obj._id]){
+              storage.remove(dts[docPrefix + obj._id]);
+            }
+          });
+          storage.set(docPrefix + obj._id, obj);
+          storage.set(seqPrefix + s, obj._id)
+          
+        });
+                  
+          
+        //= Update Rev =
         if (!obj._rev){
           obj._rev = "1-" + (Math.random()*Math.pow(10,20)); 
             // We're using the naive random versioning, rather
@@ -547,8 +632,7 @@ var BrowserCouch = function(opts){
           obj._rev = "" + (iter+1) +  
             obj._rev.slice(obj._rev.indexOf("-"));
         }
-        dict.set(obj._id, obj);
-          
+           
       }
     
       if (isArray(document)) {
@@ -558,8 +642,6 @@ var BrowserCouch = function(opts){
       } else{
         putObj(document);
       }
-      
-      commitToStorage(cb);
     };
     
 
@@ -591,8 +673,8 @@ var BrowserCouch = function(opts){
     }
 
     // 
-    self.getLength = function DB_getLength() {
-      return dict.getKeys().length;
+    self.getLength = function DB_getLength(cb) {
+      seqs(function(sqs){cb(sqs.length)});
     };
 
     // === View ===
@@ -665,8 +747,8 @@ var BrowserCouch = function(opts){
     
     self.getChanges = function(cb, seq){
       cb({
-      	results: dict.since(seq),
-      	last_seq : dict.lastSeq()
+      	results: {},//dict.since(seq),
+      	last_seq : lastSeq()
       	});
     }
       

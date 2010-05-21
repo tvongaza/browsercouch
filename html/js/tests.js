@@ -104,20 +104,6 @@ var Testing = {
 // BrowserCouch.
 
 var Tests = {
-  testDictionary: function(self) {
-    var dict = new BrowserCouch._Dictionary();
-    dict.set('foo', {a: 'hello'});
-    dict.set('bar', {b: 'goodbye'});
-    self.assertEqual(dict.get('foo').a, 'hello');
-    self.assertEqual(dict.get('bar').b, 'goodbye');
-    self.assertEqual(dict.getKeys().length, 2);
-    self.assertEqual(dict.has('foo'), true);
-    self.assertEqual(dict.has('bar'), true);
-    self.assertEqual(dict.has('spatula'), false);
-    dict.remove('bar');
-    self.assertEqual(dict.getKeys().length, 1);
-    self.assertEqual(dict.has('foo'), true);
-  },
   _setupTestDb: function(cb) {
     var documents = this._testDbContents;
     var db = BrowserCouch("blarg", {storage: new BrowserCouch.LocalStorage()});
