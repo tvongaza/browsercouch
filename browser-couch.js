@@ -269,7 +269,10 @@ var BrowserCouch = function(opts){
           var iAtStart = i;
     
           do {
-            storage.get(docPrefix + keys[i], function(d){map(d, emit)});
+            storage.get(docPrefix + keys[i], function(d){
+              currDoc=d; 
+              map(d, emit)
+              });
             i++;
           } while (i - iAtStart < chunkSize &&
                    i < keys.length);
@@ -559,14 +562,14 @@ var BrowserCouch = function(opts){
       });
     }
     
-    var docsToSeqs = function(seq, cb){
+    var docsToSeqs = function(cb){
       var out = {},
           i=0;
           
       seqs(function(sqs){
         for (var s in sqs){
           storage.get(s, function(docId){
-            out[docId] = seq;
+            out[docId] = s;
             i+=1;
             if (i == sqs.length){
               cb(out)
@@ -623,8 +626,8 @@ var BrowserCouch = function(opts){
               storage.remove(dts[docPrefix + obj._id]);
             }
           });
-          storage.put(docPrefix + obj._id, obj);
-          storage.put(seqPrefix + s, obj._id)
+          storage.put(docPrefix + obj._id, obj, function(){});
+          storage.put(seqPrefix + s, obj._id, function(){})
           
         });
                   
