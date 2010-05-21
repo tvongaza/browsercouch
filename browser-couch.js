@@ -952,23 +952,9 @@ var BrowserCouch = function(opts){
   // database
   //
   bc.allDbs = function(cb){
-  	bc.ensureMeta(function(){
-       bc._meta.get('databases', cb);
-    });
+    //TODO
   } 
   
-  // === Load Metadata Database ===
-  // We store metadata, such as a list of databases etc,
-  // in a metadatabase. This will create a browsercouch
-  // wrapper for this database unless it's already loaded
-  bc.ensureMeta = function(cb, storage, options){
-  	if (bc._meta || options.meta){
-  		cb();
-  	}else{
-  		bc._meta = cons('_BrowserCouchMeta', {meta:true, storage:storage})
-  		bc._meta.onload(cb);
-    }
-  }
   
   // == {{{BrowserCouch}}} Core Constructor ==
   //
@@ -1031,28 +1017,25 @@ var BrowserCouch = function(opts){
     
     
     };
-    bc.ensureMeta(function(){
-	    // Create a database wrapper.
-	    bc.BrowserDatabase(name,
-	      options.storage || new bc.LocalStorage(), // TODO - check local storage is available
-	      function(db){
-	        // == TODO ==
-	        // We're copying the resultant methods back onto
-	        // the self object. Could do this better.
-	        for (var k in db){
-	          self[k] = db[k];
-	        }  
-	        
-	        // Fire the onload callbacks
-	        self.loaded = true;
-	        for (var cbi in self.loadcbs){
-	            self.loadcbs[cbi](self);
-	          }
-	        },
-	      options);
-	}, options.storage, options);
-		    
-    return self;   
+    // Create a database wrapper.
+    bc.BrowserDatabase(name,
+      options.storage || new bc.LocalStorage(), // TODO - check local storage is available
+      function(db){
+        // == TODO ==
+        // We're copying the resultant methods back onto
+        // the self object. Could do this better.
+        for (var k in db){
+          self[k] = db[k];
+        }  
+        
+        // Fire the onload callbacks
+        self.loaded = true;
+        for (var cbi in self.loadcbs){
+            self.loadcbs[cbi](self);
+          }
+      }, options.storage, options);
+	       
+      return self;   
   }
   
   // == TODO ==
