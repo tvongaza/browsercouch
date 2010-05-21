@@ -244,47 +244,48 @@ var BrowserCouch = function(opts){
   // A MapReducer that works on the current thread.
   
   bc.SingleThreadedMapReducer = {
-    map: function STMR_map(map, dict, progress,
+    map: function STMR_map(map, storage, docPrefix, progress,
                            chunkSize, finished) {
-      var mapDict = {};
-      var keys = dict.getKeys();
-      var currDoc;
-  
-      function emit(key, value) {
-        // TODO: This assumes that the key will always be
-        // an indexable value. We may have to hash the value,
-        // though, if it's e.g. an Object.
-        var item = mapDict[key];
-        if (!item){
-          item = mapDict[key] = {keys: [], values: []};
+      storage.keys(docPrefix, function(keys){
+        
+        var mapDict = {};
+        var currDoc;
+    
+        function emit(key, value) {
+          // TODO: This assumes that the key will always be
+          // an indexable value. We may have to hash the value,
+          // though, if it's e.g. an Object.
+          var item = mapDict[key];
+          if (!item){
+            item = mapDict[key] = {keys: [], values: []};
+          }
+          item.keys.push(currDoc._id);
+          item.values.push(value);
         }
-        item.keys.push(currDoc._id);
-        item.values.push(value);
-      }
-  
-      var i = 0;
-  
-      function continueMap() {
-        var iAtStart = i;
-  
-        do {
-          currDoc = dict.get(keys[i]);
-          map(currDoc, emit);
-          i++;
-        } while (i - iAtStart < chunkSize &&
-                 i < keys.length);
-  
-        if (i >= keys.length) {
-          var mapKeys = [];
-          for (name in mapDict)
-            mapKeys.push(name);
-          mapKeys.sort();
-          finished({dict: mapDict, keys: mapKeys});
-        } else
-          progress("map", i / keys.length, continueMap);
-      }
-  
-      continueMap();
+    
+        var i = 0;
+    
+        function continueMap() {
+          var iAtStart = i;
+    
+          do {
+            storage.get(docPrefix + keys[i], function(d){map(d, emit)});
+            i++;
+          } while (i - iAtStart < chunkSize &&
+                   i < keys.length);
+    
+          if (i >= keys.length) {
+            var mapKeys = [];
+            for (name in mapDict)
+              mapKeys.push(name);
+            mapKeys.sort();
+            finished({dict: mapDict, keys: mapKeys});
+          } else
+            progress("map", i / keys.length, continueMap);
+        }
+    
+        continueMap();
+      });  
     },
   
     reduce: function STMR_reduce(reduce, mapResult, progress,
@@ -458,7 +459,7 @@ var BrowserCouch = function(opts){
     this.keys = function(prefix, cb){
       var out = [];
       for (var i in db){
-        if (i.match("^"+prefix)===prefix){ // i starts with prefix
+        if (i.slice(0, prefix.length)===prefix){ 
           out.push(i);
         }  
       }
@@ -516,10 +517,11 @@ var BrowserCouch = function(opts){
     this.keys = function(prefix, cb){
       var out = [];
       for (var i in storage){
-        if (i.match("^"+prefix)===prefix){ // i starts with prefix
+        if (i.slice(0, prefix.length)===prefix){ 
           out.push(i.slice(prefix.length, i.length));
         }  
       }
+      console.log(prefix, cb);
       cb(out);
     }
     
@@ -575,8 +577,13 @@ var BrowserCouch = function(opts){
     };
     
     var lastSeq = function(cb){
-      seqs(seqPrefix, function(sqs){
-          
+      seqs(function(sqs){
+          var max = 0;
+          for (var i in sqs){
+            if (parseInt(i) > max)
+              max = i;
+          }
+          cb(max);
       });
     };
     
@@ -616,8 +623,8 @@ var BrowserCouch = function(opts){
               storage.remove(dts[docPrefix + obj._id]);
             }
           });
-          storage.set(docPrefix + obj._id, obj);
-          storage.set(seqPrefix + s, obj._id)
+          storage.put(docPrefix + obj._id, obj);
+          storage.put(seqPrefix + s, obj._id)
           
         });
                   
@@ -727,7 +734,8 @@ var BrowserCouch = function(opts){
 
       mapReducer.map(
         options.map,
-        dict,
+        storage,
+        docPrefix,
         progress,
         chunkSize,
         function(mapResult) {
