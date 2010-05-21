@@ -267,7 +267,6 @@ var BrowserCouch = function(opts){
     
         function continueMap() {
           var iAtStart = i;
-    
           do {
             storage.get(docPrefix + keys[i], function(d){
               currDoc=d; 
@@ -599,6 +598,7 @@ var BrowserCouch = function(opts){
         for (var seq in sqs){
           removeBySeq(sqs[seq]);
         }
+        cb();
       });
     };
 
@@ -615,7 +615,6 @@ var BrowserCouch = function(opts){
     //
     // It creates or updates a document
     self.put = function DB_put(document, cb, options) {
-      
       options = options || {};
       
       var putObj = function(obj){
@@ -634,15 +633,14 @@ var BrowserCouch = function(opts){
           
         //= Update Rev =
         if (!obj._rev){
-          obj._rev = "1-" + (Math.random()*Math.pow(10,20)); 
+          obj._rev = "1-" + (Math.random()*Math.pow(10,20));
             // We're using the naive random versioning, rather
             // than the md5 deterministic hash.
         }else{
           var iter = parseInt(obj._rev.split("-")[0]);
           obj._rev = "" + (iter+1) +  
             obj._rev.slice(obj._rev.indexOf("-"));
-        }
-           
+        } 
       }
     
       if (isArray(document)) {
@@ -652,6 +650,8 @@ var BrowserCouch = function(opts){
       } else{
         putObj(document);
       }
+      
+      cb();
     };
     
 
@@ -759,7 +759,7 @@ var BrowserCouch = function(opts){
     self.getChanges = function(cb, seq){
       cb({
       	results: {},//dict.since(seq),
-      	last_seq : lastSeq()
+      	last_seq : lastSeq(function(){})
       	});
     }
       
