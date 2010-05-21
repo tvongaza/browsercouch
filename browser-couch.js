@@ -524,7 +524,6 @@ var BrowserCouch = function(opts){
           out.push(i.slice(prefix.length, i.length));
         }  
       }
-      console.log(prefix, cb);
       cb(out);
     }
     
@@ -556,9 +555,9 @@ var BrowserCouch = function(opts){
     }
     
     var removeBySeq = function(seq){
-      storage.get(seq, function(docId){
-        storage.remove(docId);
-        storage.remove(seq);
+      storage.get(seqPrefix + seq, function(docId){
+        storage.remove(docPrefix + docId);
+        storage.remove(seqPrefix + seq);
       });
     }
     
@@ -583,8 +582,9 @@ var BrowserCouch = function(opts){
       seqs(function(sqs){
           var max = 0;
           for (var i in sqs){
-            if (parseInt(i) > max)
-              max = i;
+            var x = parseInt(sqs[i]);
+            if (x > max)
+              max = x;
           }
           cb(max);
       });
@@ -597,7 +597,7 @@ var BrowserCouch = function(opts){
     self.wipe = function DB_wipe(cb) {
       seqs(function(sqs){
         for (var seq in sqs){
-          removeBySeq(seq);
+          removeBySeq(sqs[seq]);
         }
       });
     };
