@@ -779,11 +779,24 @@ var BrowserCouch = function(opts){
         });
     };
     
-    self.getChanges = function(cb, seq){
-      cb({
-      	results: {},//dict.since(seq),
-      	last_seq : lastSeq(function(){})
-      	});
+
+    self.getChanges = function(cb, since){
+      lastSeq(function(s){
+        docsToSeqs(function(dts){
+          var results = {};
+          for (var i in dts){
+            if (parseInt(dts[i]) > since){
+              results[dts[i]] = i; 
+            }
+          }
+          
+               
+          cb({
+          	results: {},//dict.since(seq),
+          	last_seq : s
+          	});
+        })
+      });  
     }
       
     storage.get(
