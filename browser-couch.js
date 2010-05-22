@@ -480,13 +480,12 @@ var BrowserCouch = function(opts){
   
   bc.LocalStorage = function LocalStorage() {
     var storage;
-  
-    if (window.globalStorage)
+    
+    if (window.localStorage)
+      storage = window.localStorage;
+    else if (window.globalStorage)
       storage = window.globalStorage[location.hostname];
     else {
-      if (window.localStorage)
-        storage = window.localStorage;
-      else
         throw new Error("globalStorage/localStorage not available.");
     }
   
@@ -518,9 +517,10 @@ var BrowserCouch = function(opts){
     
     this.keys = function(prefix, cb){
       var out = [];
-      for (var i in storage){
-        if (i.slice(0, prefix.length)===prefix){ 
-          out.push(i.slice(prefix.length, i.length));
+      for (var i = 0; i < storage.length; i++){
+        var key = storage.key(i);
+        if (key.slice(0, prefix.length)===prefix){ 
+          out.push(key.slice(prefix.length, key.length));
         }  
       }
       cb(out);
@@ -552,6 +552,7 @@ var BrowserCouch = function(opts){
     var seqs = function(cb){
       storage.keys(seqPrefix, cb);
     }
+    
     
     var removeBySeq = function(seq){
       storage.get(seqPrefix + seq, function(docId){
@@ -593,6 +594,10 @@ var BrowserCouch = function(opts){
       lastSeq(function(s){cb(s+1)});
     }    
         
+    self.lastSeq = function DB_LastSeq(cb){
+      lastSeq(cb)
+    }
+        
     self.wipe = function DB_wipe(cb) {
       seqs(function(sqs){
         for (var seq in sqs){
@@ -604,7 +609,12 @@ var BrowserCouch = function(opts){
 
     self.get = function DB_get(id, cb) {
       cb = cb || function(){}
-      storage.get(docPrefix + id, cb);
+      storage.get(docPrefix + id, function(doc){
+        if (!doc._deleted)
+          cb(doc)
+        else
+          cb(null)
+      });
     };
     
     // === {{{PUT}}} ===
@@ -618,6 +628,19 @@ var BrowserCouch = function(opts){
       options = options || {};
       
       var putObj = function(obj){
+        
+        
+        //= Update Rev =
+        if (!obj._rev){
+          obj._rev = "1-" + (Math.random()*Math.pow(10,20));
+            // We're using the naive random versioning, rather
+            // than the md5 deterministic hash.
+        }else{
+          var iter = parseInt(obj._rev.split("-")[0]);
+          obj._rev = "" + (iter+1) +  
+            obj._rev.slice(obj._rev.indexOf("-"));
+        }
+        
         // Does the object exist?
         newSeq(function(s){
           docsToSeqs(function(dts){
@@ -631,16 +654,6 @@ var BrowserCouch = function(opts){
         });
                   
           
-        //= Update Rev =
-        if (!obj._rev){
-          obj._rev = "1-" + (Math.random()*Math.pow(10,20));
-            // We're using the naive random versioning, rather
-            // than the md5 deterministic hash.
-        }else{
-          var iter = parseInt(obj._rev.split("-")[0]);
-          obj._rev = "" + (iter+1) +  
-            obj._rev.slice(obj._rev.indexOf("-"));
-        } 
       }
     
       if (isArray(document)) {
@@ -684,7 +697,17 @@ var BrowserCouch = function(opts){
 
     // 
     self.getLength = function DB_getLength(cb) {
-      seqs(function(sqs){cb(sqs.length)});
+      storage.keys(docPrefix, function(docIds){
+        console.log('docIds: ' + docIds)
+        var len = 0;
+        docIds.forEach(function(docId){
+          storage.get(docPrefix + docId, function(doc){
+            if (!doc._deleted)
+              len++
+          })
+        })  
+        cb(len)
+      })
     };
 
     // === View ===
