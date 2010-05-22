@@ -35,3 +35,48 @@ describe('BrowserCouch Rev and Changes', {async: true})
       this.finish()
     })
   })
+  .should('give changes', function(){
+    var self = this
+    var db = this.db
+    db.put({_id: '1', name: 'Bob'})
+    db.getChanges(function(changes){
+      self.expect(changes.last_seq).toBe(1)
+      var change = changes.results[0]
+      self.expect(change.seq).toBe(1)
+      db.get('1', function(doc){
+        self.expect(change.id).toBe(doc._id)
+        self.expect(change.changes[0].rev).toBe(doc._rev)
+        self.finish()
+      })
+    })
+  })
+  .should('deleted status in changes', function(){
+    var self = this
+    var db = this.db
+    db.put({_id: '1', name: 'Bob'})
+    db.get('1', function(bob){
+      db.del(bob)
+      db.getChanges(function(changes){
+        self.expect(changes.last_seq).toBe(2)
+        var change = changes.results[0]
+        self.expect(change.seq).toBe(2)
+        self.expect(change.id).toBe(doc._id)
+        self.expect(change.deleted).toBe(true)
+        self.finish()
+      })
+    })
+  })
+  .should('filter change', function(){
+    var self = this
+    var db = this.db
+    db.put({_id: '1', name: 'Frodo'})
+    db.put({_id: '2', name: 'Darth'})
+    db.getChanges({since: 1}, function(changes){
+      self.expect(changes.last_seq).toBe(1)
+      var change = changes.results[0]
+      db.get('2', function(darth){
+        self.expect(change.id).toBe(darth._id)
+        self.finish()
+      })
+    })
+  })
