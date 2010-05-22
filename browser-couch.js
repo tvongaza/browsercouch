@@ -650,8 +650,8 @@ var BrowserCouch = function(opts){
       } else{
         putObj(document);
       }
-      
-      cb();
+      if (cb)
+        cb();
     };
     
 
