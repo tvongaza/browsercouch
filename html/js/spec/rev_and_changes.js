@@ -73,6 +73,7 @@ describe('BrowserCouch Rev and Changes', {async: true})
     db.put({_id: '2', name: 'Darth'})
     db.getChanges(function(changes){
       self.expect(changes.last_seq).toBe(2)
+      self.expect(changes.results.length).toBe(1)
       var change = changes.results[0]
       db.get('2', function(darth){
         self.expect(change.id).toBe(darth._id)
