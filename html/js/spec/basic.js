@@ -13,31 +13,21 @@ describe('BrowserCouch Basic CRUD', {async: true})
     })
   })
   .should('have length', function(){
-    var self = this;
-    this.db.getLength(function(len){
-      self.expect(len).toBe(0);
-      self.finish();
-    })
+    this.expect(this.db.docCount()).toBe(0)
+    this.finish();
   })
   .should('have lastSeq', function(){
-    var self = this;
-    this.db.lastSeq(function(seq){
-      self.expect(seq).toBe(0);
-      self.finish();
-    })
+    this.expect(this.db.lastSeq()).toBe(0);
+    this.finish();
   })
   .should('bump length and lastSeq when added doc', function(){
     var self = this
     var db = this.db
     db.put({_id: '1', name: 'Emma'})
     db.get('1', function(doc){
-      db.lastSeq(function(seq){
-        self.expect(seq).toBe(1)
-        db.getLength(function(len){
-          self.expect(len).toBe(1)
-          self.finish()
-        })
-      })
+      self.expect(db.lastSeq()).toBe(1)
+      self.expect(db.docCount()).toBe(1)
+      self.finish()
     })
   })
   .should('delete', function(){
@@ -46,12 +36,10 @@ describe('BrowserCouch Basic CRUD', {async: true})
     db.put({_id: '1', name: 'Emma'})
     db.get('1', function(doc){
       db.del(doc, function(){
-        db.getLength(function(len){
-          self.expect(len).toBe(0);
-          db.get('1', function(doc){
-            self.expect(doc).toBe(null);
-            self.finish();
-          })
+        self.expect(db.docCount()).toBe(0)
+        db.get('1', function(doc){
+          self.expect(doc).toBe(null);
+          self.finish();
         })
       })
     })

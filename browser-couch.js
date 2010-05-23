@@ -505,7 +505,7 @@ var BrowserCouch = function(opts){
       bc.ModuleLoader.require('JSON',
         function() {
           storage[name] = JSON.stringify(obj);
-          cb();
+          if (cb) cb();
         });
     };
     
@@ -547,7 +547,17 @@ var BrowserCouch = function(opts){
         dbName = 'BC_DB_' + name,
         seqPrefix = dbName + '__seq_',
         docPrefix = dbName + '_doc_',
-        syncManager;
+        syncManager,
+        dbInfo;
+    
+     
+    storage.get(dbName, function(info){
+      dbInfo = info
+      if (!dbInfo){
+        dbInfo = {last_seq: 0, doc_count: 0}
+        storage.put(dbName, dbInfo)
+      }
+    });
       
     var seqs = function(cb){
       storage.keys(seqPrefix, cb);
@@ -555,47 +565,11 @@ var BrowserCouch = function(opts){
     
     
     var removeBySeq = function(seq){
-      storage.get(seqPrefix + seq, function(docId){
+      storage.get(seqPrefix + seq, function(seqInfo){
+        var docId = seqInfo.id
         storage.remove(docPrefix + docId);
         storage.remove(seqPrefix + seq);
       });
-    }
-    
-    var docsToSeqs = function(cb){
-      var out = {},
-          i=0;
-          
-      seqs(function(sqs){
-        for (var s in sqs){
-          storage.get(s, function(docId){
-            out[docId] = s;
-            i+=1;
-            if (i == sqs.length){
-              cb(out)
-            }      
-          });
-        }
-      });
-    };
-    
-    var lastSeq = function(cb){
-      seqs(function(sqs){
-          var max = 0;
-          for (var i in sqs){
-            var x = parseInt(sqs[i]);
-            if (x > max)
-              max = x;
-          }
-          cb(max);
-      });
-    };
-    
-    var newSeq = function(cb){
-      lastSeq(function(s){cb(s+1)});
-    }    
-        
-    self.lastSeq = function DB_LastSeq(cb){
-      lastSeq(cb)
     }
         
     self.wipe = function DB_wipe(cb) {
@@ -628,30 +602,34 @@ var BrowserCouch = function(opts){
       options = options || {};
       
       var putObj = function(obj){
-        
-        
-        //= Update Rev =
-        if (!obj._rev){
-          obj._rev = "1-" + (Math.random()*Math.pow(10,20));
-            // We're using the naive random versioning, rather
-            // than the md5 deterministic hash.
-        }else{
-          var iter = parseInt(obj._rev.split("-")[0]);
-          obj._rev = "" + (iter+1) +  
-            obj._rev.slice(obj._rev.indexOf("-"));
-        }
-        
-        // Does the object exist?
-        newSeq(function(s){
-          docsToSeqs(function(dts){
-            if (dts[docPrefix + obj._id]){
-              storage.remove(dts[docPrefix + obj._id]);
+        storage.get(docPrefix + obj._id, function(orig){
+          if (orig && orig._rev != obj._rev){
+            throw new Error('Document update conflict.');
+          }else{
+            //= Update Rev =
+            if (!obj._rev){
+              obj._rev = "1-" + (Math.random()*Math.pow(10,20));
+                // We're using the naive random versioning, rather
+                // than the md5 deterministic hash.
+            }else{
+              var iter = parseInt(obj._rev.split("-")[0]);
+              obj._rev = "" + (iter+1) +  
+                obj._rev.slice(obj._rev.indexOf("-"));
             }
-          });
-          storage.put(docPrefix + obj._id, obj, function(){});
-          storage.put(seqPrefix + s, obj._id, function(){})
-          
-        });
+            if (!orig)
+              dbInfo.doc_count++;
+            else if (obj._deleted)
+              dbInfo.doc_count--;
+            dbInfo.last_seq++;
+            var s = dbInfo.last_seq;
+            storage.put(docPrefix + obj._id, obj, function(){});
+            var seqInfo = {id: obj._id, changes: [{rev: obj._rev}]}
+            if (obj._deleted)
+              seqInfo.deleted = true;
+            storage.put(seqPrefix + s, seqInfo, function(){})
+            storage.put(dbName, dbInfo)
+          }
+        })
                   
           
       }
@@ -696,18 +674,8 @@ var BrowserCouch = function(opts){
     }
 
     // 
-    self.getLength = function DB_getLength(cb) {
-      storage.keys(docPrefix, function(docIds){
-        console.log('docIds: ' + docIds)
-        var len = 0;
-        docIds.forEach(function(docId){
-          storage.get(docPrefix + docId, function(doc){
-            if (!doc._deleted)
-              len++
-          })
-        })  
-        cb(len)
-      })
+    self.docCount = function DB_docCount() {
+      return dbInfo.doc_count;
     };
 
     // === View ===
@@ -779,36 +747,28 @@ var BrowserCouch = function(opts){
         });
     };
     
+    self.lastSeq = function BC_lastSeq(){
+      return dbInfo.last_seq;
+    }
 
     self.getChanges = function(cb, since){
-      lastSeq(function(s){
-        docsToSeqs(function(dts){
-          var results = {};
-          for (var i in dts){
-            if (parseInt(dts[i]) > since){
-              results[dts[i]] = i; 
-            }
-          }
-          
-               
-          cb({
-          	results: {},//dict.since(seq),
-          	last_seq : s
-          	});
+      since = since || 0
+      var changes = [];
+      for (var seq = dbInfo.last_seq; seq > since; seq--){
+        storage.get(seqPrefix + seq, function(seqInfo){
+          var change = {seq: seq, id: seqInfo.id, changes: seqInfo.changes}
+          if (seqInfo.deleted)
+            change.deleted = seqInfo.deleted
+          changes.push(change)
         })
-      });  
+      }
+      cb({
+        results: changes,
+        last_seq: dbInfo.last_seq
+      })
     }
-      
-    storage.get(
-      dbName,
-      function(obj) {
-        if (obj)
-          dict.unpickle(obj);
-        cb(self);
-      });
     
-    
-      
+    cb(self)
   
   }
   // === Remote Database ===

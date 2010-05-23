@@ -29,11 +29,10 @@ describe('BrowserCouch Rev and Changes', {async: true})
     var self = this
     var db = this.db
     db.put({_id: '1', name: 'Bob'})
-    db.put({_id: '1', name: 'Bill'})
-    db.get('1', function(doc){
-      self.expect(doc.name).toBe('Bob')
-      this.finish()
-    })
+    self.expect(function(){
+      db.put({_id: '1', name: 'Bill'})
+    }).toRaise('Document update conflict.')
+    this.finish()
   })
   .should('give changes', function(){
     var self = this
@@ -57,10 +56,11 @@ describe('BrowserCouch Rev and Changes', {async: true})
     db.get('1', function(bob){
       db.del(bob)
       db.getChanges(function(changes){
+        console.log('changes: ' + JSON.stringify(changes))
         self.expect(changes.last_seq).toBe(2)
         var change = changes.results[0]
         self.expect(change.seq).toBe(2)
-        self.expect(change.id).toBe(doc._id)
+        self.expect(change.id).toBe(bob._id)
         self.expect(change.deleted).toBe(true)
         self.finish()
       })
@@ -71,12 +71,12 @@ describe('BrowserCouch Rev and Changes', {async: true})
     var db = this.db
     db.put({_id: '1', name: 'Frodo'})
     db.put({_id: '2', name: 'Darth'})
-    db.getChanges({since: 1}, function(changes){
-      self.expect(changes.last_seq).toBe(1)
+    db.getChanges(function(changes){
+      self.expect(changes.last_seq).toBe(2)
       var change = changes.results[0]
       db.get('2', function(darth){
         self.expect(change.id).toBe(darth._id)
         self.finish()
       })
-    })
+    }, 1)
   })
