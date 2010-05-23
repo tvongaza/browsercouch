@@ -754,12 +754,15 @@ var BrowserCouch = function(opts){
     self.getChanges = function(cb, since){
       since = since || 0
       var changes = [];
+      var docIds = {}; // map to simulate a Sef of IDs
       for (var seq = dbInfo.last_seq; seq > since; seq--){
         storage.get(seqPrefix + seq, function(seqInfo){
+          if (seqInfo.id in docIds) return
           var change = {seq: seq, id: seqInfo.id, changes: seqInfo.changes}
           if (seqInfo.deleted)
             change.deleted = seqInfo.deleted
           changes.push(change)
+          docIds[seqInfo.id] = true
         })
       }
       cb({

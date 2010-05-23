@@ -81,3 +81,17 @@ describe('BrowserCouch Rev and Changes', {async: true})
       })
     }, 1)
   })
+  .should('changes only return latest seq for a doc', function(){
+    var self = this
+    var db = this.db
+    db.put({_id: '1', name: 'Frodo'})
+    db.get('1', function(frodo){
+      frodo.name = 'Frodio'
+      db.put(frodo)
+      db.getChanges(function(changes){
+        self.expect(changes.last_seq).toBe(2)
+        self.expect(changes.results.length).toBe(1)
+        self.finish()
+      })
+    })
+  })
