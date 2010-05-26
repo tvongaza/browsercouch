@@ -243,7 +243,11 @@ describe.Test.States = {
             var self = this
 			if (this.spec._before){
     			this.setState('setup')
-			    this.spec._before.call(this)
+    			try{
+			        this.spec._before.call(this)
+			    }catch(e){
+			        this.reportResult(new describe.TestResult(e))
+			    }
     		    var timeout = this.options.asyncTimeout || 1000
     		    setTimeout((function(test){
     		        return function(){

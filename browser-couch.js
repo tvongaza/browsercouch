@@ -56,7 +56,86 @@ var BrowserCouch = function(opts){
     return Object.prototype.toString.call(value) === "[object Array]";
   }
  
+  function keys(obj){
+      var ret = []
+      for (var key in obj)
+          ret.push(key)
+      return ret
+  }
 
+  var Couch = function Couch(options){
+      if (options.url)
+          this.baseUrl = options.url
+      else{
+          this.name = options.name
+          this.host = options.host || 'localhost'
+          this.port = options.port || 5984
+          this.baseUrl = 'http://' + this.host + ':' + this.port + '/' + this.name + '/'
+      }
+  }
+  Couch.prototype = {
+      get: function(id, params, callback, context){
+          var qs = this.qs(params)
+          console.log('GET' + id + ' qs: ' + qs)
+          this.request('GET', id + qs, params, callback, context)
+      },
+      post: function(id, doc, callback, context){
+          this.request('POST', id, JSON.stringify(doc), callback, context)
+      },
+      put: function(id, doc, callback, context){
+          this.request('PUT', id, JSON.stringify(doc), callback, context)
+      },
+      del: function(doc, callback, context){
+          this.request('DELETE', doc._id + '?rev=' + doc._rev, null, callback, context)
+      },
+      view: function(viewPath, params, callback, context){
+          this.get(this.expandViewPath(viewPath, params), callback, context)
+      },  
+      drop: function(callback, context){
+          this.request('DELETE', '', null, callback, context)
+      },
+      create: function(callback, context){
+          this.request('PUT', '', null, callback, context)
+      },
+      qs: function(params){
+          if (!params) return ''
+              return '?' + keys(params).map(function(key){return key + '=' + encodeURI(params[key])}).join('&')
+      },
+      expandViewPath: function expandViewPath(viewPath, params){
+        var parts = viewPath.split('/')
+        var viewPath = '_design/' + parts[0] + '/_view/' + parts[1]
+        viewPath += this.qs(params)
+        //sys.debug('viewPath: ' + viewPath)
+        return viewPath
+      },
+      request: function request(verb, uri, data, callback, context){
+          function _callback(){
+              if (this.readyState == 4){
+                  var result
+                  try{
+                      result = JSON.parse(this.responseText)
+                  }catch(e){
+                      console.log('Parse JSON failed: ' + this.responseText)
+                      result = null
+                  }
+
+                  callback.call(context, result)
+              }else if(this.readyState == 1){
+                  this.setRequestHeader('Accept', 'application/json')
+              }
+          }
+
+          var xhr = new XMLHttpRequest()
+          xhr.onreadystatechange = callback ? _callback : null
+          var url = this.baseUrl + uri
+          //console.log(verb + ': ' + url)
+          xhr.open(verb, url, true)
+          xhr.send(data)
+      }
+
+  }
+
+  window.Couch = Couch
   
   // === {{{ModuleLoader}}} ===
   //
@@ -547,7 +626,6 @@ var BrowserCouch = function(opts){
         dbName = 'BC_DB_' + name,
         seqPrefix = dbName + '__seq_',
         docPrefix = dbName + '_doc_',
-        syncManager,
         dbInfo;
     
      
@@ -562,7 +640,6 @@ var BrowserCouch = function(opts){
     var seqs = function(cb){
       storage.keys(seqPrefix, cb);
     }
-    
     
     var removeBySeq = function(seq){
       storage.get(seqPrefix + seq, function(seqInfo){
@@ -600,10 +677,13 @@ var BrowserCouch = function(opts){
     // It creates or updates a document
     self.put = function DB_put(document, cb, options) {
       options = options || {};
+      var newEdits = 'new_edits' in options ? options.new_edits: true;
       
       var putObj = function(obj){
         storage.get(docPrefix + obj._id, function(orig){
-          if (orig && orig._rev != obj._rev){
+          if (newEdits && orig && orig._rev != obj._rev){
+            console.log('original: ' + JSON.stringify(orig));
+            console.log('new: ' + JSON.stringify(obj));
             throw new Error('Document update conflict.');
           }else{
             //= Update Rev =
@@ -624,8 +704,10 @@ var BrowserCouch = function(opts){
             var s = dbInfo.last_seq;
             storage.put(docPrefix + obj._id, obj, function(){});
             var seqInfo = {id: obj._id, changes: [{rev: obj._rev}]}
-            if (obj._deleted)
+            if (obj._deleted){
               seqInfo.deleted = true;
+              seqInfo._revWhenDeleted = orig._rev.split('-')[1]
+            }
             storage.put(seqPrefix + s, seqInfo, function(){})
             storage.put(dbName, dbInfo)
           }
@@ -752,115 +834,111 @@ var BrowserCouch = function(opts){
     }
 
     self.getChanges = function(cb, since){
-      since = since || 0
+      since = since || 0;
       var changes = [];
       var docIds = {}; // map to simulate a Sef of IDs
       for (var seq = dbInfo.last_seq; seq > since; seq--){
         storage.get(seqPrefix + seq, function(seqInfo){
-          if (seqInfo.id in docIds) return
-          var change = {seq: seq, id: seqInfo.id, changes: seqInfo.changes}
+          if (seqInfo.id in docIds) return;
+          var change = {seq: seq, id: seqInfo.id, changes: seqInfo.changes};
           if (seqInfo.deleted)
-            change.deleted = seqInfo.deleted
-          changes.push(change)
-          docIds[seqInfo.id] = true
+            change.deleted = seqInfo.deleted;
+          changes.push(change);
+          docIds[seqInfo.id] = true;
         })
       }
       cb({
         results: changes,
         last_seq: dbInfo.last_seq
+      });
+    }
+    
+    self.createBulkDocs = function BC_createBulkDocs(changes){
+      var docs;
+      var ret = {
+        new_edits: false,
+        docs: docs = []
+      }
+      for (var i = 0; i< changes.results.length; i++){
+        var res = changes.results[i];
+        var id = res.id;
+        var rev = res.changes[0].rev
+        var revParts = rev.split('-')
+        var doc;
+        if (!res.deleted){
+          self.get(id, function(d){
+            doc = d
+            doc._revisions = {
+              start: parseInt(revParts[0]),
+              ids: [revParts[1]]
+            }
+          });
+        }else{
+          var seqInfo;
+          storage.get(seqPrefix + res.seq, function(si){
+            seqInfo = si;
+          })
+          doc = {
+            _id: id,
+            _rev: rev,
+            _deleted: true
+          }
+          doc._revisions = {
+            start: parseInt(revParts[0]),
+            ids: [revParts[1], seqInfo._revWhenDeleted]
+          }
+        }
+        docs.push(doc);
+      }
+      return ret
+    }
+    
+    function getRepInfo(target){
+      if (!dbInfo.replications) return 0;
+      return dbInfo.replications[target] || 0;
+    }
+    function setRepInfo(target, since){
+      if (!dbInfo.replications)
+        dbInfo.replications = {};
+      dbInfo.replications[target] = since;
+      storage.put(dbName, dbInfo, function(){})
+    }
+    
+    self.syncTo = function BC_syncTo(target, cb){
+      var since = getRepInfo(target);
+      var couch = new Couch({url: target});
+      var self = this;
+      this.getChanges(function(changes){
+        var bulkDocs = self.createBulkDocs(changes);
+        console.log('bulkDocs: ' + JSON.stringify(bulkDocs));
+        couch.post('_bulk_docs', bulkDocs, function(reply){
+          couch.post('_ensure_full_commit', 'true', function(reply){
+            setRepInfo(target, changes.last_seq)
+            if (cb) cb(reply)
+          }, this)
+        }, this)
+      });
+    }
+    
+    self.syncFrom = function BC_syncFrom(target, cb){
+      var self = this;
+      var since = this.lastSeq();
+      var couch = new Couch({url: target});
+      couch.get('_changes', {include_docs: true, since: since}, function(data){
+        var results = data.results;
+        for (var i = 0; i < results.length; i++){
+          var res = results[i];
+          self.put(res.doc, function(){}, {new_edits: false});
+        }
+        if (cb) cb()
       })
     }
     
     cb(self)
   
   }
-  // === Remote Database ===
-  // A constructor for a database wrapper for the REST interface 
-  // for a remote CouchDB server. Mainly for use in the syncing.
-  // 
-  //
-  bc.SameDomainDB = function (url, cb, options){
-   var rs = {
-      url : url,
-      seq : 0,
-      
-      get : function(id, cb){
-      	console.log("GET:", id, url);
-        $.getJSON(this.url + "/" + id, {}, cb || function(){}); 
-      },
-      
-      put : function(doc, cb, options){       
-        console.log("PUT:", doc, url);
-        $.ajax({
-          url : this.url + "/" + doc._id, 
-          data : JSON.stringify(doc),
-          type : 'PUT',
-          processData : false,
-          contentType : 'application/json',
-          complete: function(data){
-            if (cb){
-              cb();
-            }
-          }
-        });
-      },
-      
-      // ==== Get Changes ====
-      // We poll the {{{_changes}}} endpoint to get the most
-      // recent documents. At the moment, we're not storing the
-      // sequence numbers for each server, however this is on 
-      // the TODO list.
-      
-      getChanges : function(cb){
-      	console.log("_changes", this.url);
-        var url = this.url + "/_changes";
-        $.getJSON(url, {since : rs.seq}, function(data){
-          cb(data);               
-         });
-      }
-    
-    };
-    if (cb){
-      cb(rs);
-    }
-  }
 
-  // === Function to sync between a source, and target database ===
-  bc.sync = function(source, target, options){
-    var options = options || {};
-    var _sync = function(){  
-      // ==== Get Changes ====
-      target.getChanges(function(data){
-      	console.log(data);
-        if (data && data.results){
-          // ==== Merge new data back in ====
-          // TODO, screw it, for now we'll assume the servers right.
-          // - In future we need to store the conflicts in the doc
-          var i = 0;
-          for (var d in data.results){
-            target.get(data.results[d].id, function(doc){
-              if (doc){
-                source.put(doc, function(){
-                  i ++;
-                  if (i >= data.results.length){
-                    if (options.update){
-                      options.update();
-                    }
-                  }
-                });
-              }  
-            })
-          }
-        }
-      });     
-    }
-    
-    _sync();
-    
-    if (options.continuous){
-      var interval = setInterval(_sync, options.timeout || 3000);  
-    }
-  }
+
 
 
   // === //List All Databases// ===
