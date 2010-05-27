@@ -20,7 +20,7 @@ describe('BrowserCouch Basic CRUD', {async: true})
     this.expect(this.db.lastSeq()).toBe(0);
     this.finish();
   })
-  .should('bump length and lastSeq when added doc', function(){
+  .should('bump docCount and lastSeq when added doc', function(){
     var self = this
     var db = this.db
     db.put({_id: '1', name: 'Emma'})

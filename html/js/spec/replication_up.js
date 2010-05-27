@@ -49,6 +49,9 @@ describe('BrowserCouch Replicate Up', {async: true})
     self.db.syncTo(self.couch.baseUrl, function(){
       self.db.get('1', function(john){
         self.db.del(john)
+        self.db.getChanges(function(changes){
+          console.log('changes: ' + JSON.stringify(changes));
+        })
         self.db.syncTo(self.couch.baseUrl, function(){
           self.couch.get('_all_docs', {
             include_docs: true

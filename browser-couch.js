@@ -76,7 +76,6 @@ var BrowserCouch = function(opts){
   Couch.prototype = {
       get: function(id, params, callback, context){
           var qs = this.qs(params)
-          console.log('GET' + id + ' qs: ' + qs)
           this.request('GET', id + qs, params, callback, context)
       },
       post: function(id, doc, callback, context){
@@ -600,7 +599,7 @@ var BrowserCouch = function(opts){
         var key = storage.key(i);
         if (key.slice(0, prefix.length)===prefix){ 
           out.push(key.slice(prefix.length, key.length));
-        }  
+        }
       }
       cb(out);
     }
@@ -626,16 +625,8 @@ var BrowserCouch = function(opts){
         dbName = 'BC_DB_' + name,
         seqPrefix = dbName + '__seq_',
         docPrefix = dbName + '_doc_',
-        dbInfo;
-    
-     
-    storage.get(dbName, function(info){
-      dbInfo = info
-      if (!dbInfo){
-        dbInfo = {last_seq: 0, doc_count: 0}
-        storage.put(dbName, dbInfo)
-      }
-    });
+        _lastSeq,
+        _docCount;
       
     var seqs = function(cb){
       storage.keys(seqPrefix, cb);
@@ -679,6 +670,7 @@ var BrowserCouch = function(opts){
       options = options || {};
       var newEdits = 'new_edits' in options ? options.new_edits: true;
       
+      var self = this;
       var putObj = function(obj){
         storage.get(docPrefix + obj._id, function(orig){
           if (newEdits && orig && orig._rev != obj._rev){
@@ -696,23 +688,19 @@ var BrowserCouch = function(opts){
               obj._rev = "" + (iter+1) +  
                 obj._rev.slice(obj._rev.indexOf("-"));
             }
+            self.docCount();
             if (!orig)
-              dbInfo.doc_count++;
-            else if (obj._deleted)
-              dbInfo.doc_count--;
-            dbInfo.last_seq++;
-            var s = dbInfo.last_seq;
-            storage.put(docPrefix + obj._id, obj, function(){});
-            var seqInfo = {id: obj._id, changes: [{rev: obj._rev}]}
+              _docCount++;
             if (obj._deleted){
-              seqInfo.deleted = true;
-              seqInfo._revWhenDeleted = orig._rev.split('-')[1]
+              obj._revWhenDeleted = orig._rev;
+              _docCount--;
             }
-            storage.put(seqPrefix + s, seqInfo, function(){})
-            storage.put(dbName, dbInfo)
+            var seq = self.lastSeq() + 1;
+            _lastSeq = seq;
+            storage.put(docPrefix + obj._id, obj, function(){});
+            storage.put(seqPrefix + seq, obj._id, function(){})
           }
-        })
-                  
+        })   
           
       }
     
@@ -757,8 +745,40 @@ var BrowserCouch = function(opts){
 
     // 
     self.docCount = function DB_docCount() {
-      return dbInfo.doc_count;
+      if (_docCount !== undefined) return _docCount;
+      var ids = [];
+      var seq = 1;
+      var stop = false;
+      while (!stop){
+        storage.get(seqPrefix + seq, function(id){
+          if (!id){
+            stop = true;
+            _docCount = ids.length;
+          }else{
+            if (ids.indexOf(id) == -1)
+              ids.push(id)
+          }
+        })
+        seq++
+      }
+      return _docCount;
     };
+    
+    self.lastSeq = function BC_lastSeq(){
+      if (_lastSeq !== undefined) return _lastSeq
+      var seq = 1;
+      var stop = false;
+      while (!stop){
+        storage.get(seqPrefix + seq, function(id){
+          if (!id){
+            stop = true;
+            _lastSeq = seq - 1;
+          }
+        })
+        seq++
+      }
+      return _lastSeq;
+    }
 
     // === View ===
     //
@@ -829,27 +849,43 @@ var BrowserCouch = function(opts){
         });
     };
     
-    self.lastSeq = function BC_lastSeq(){
-      return dbInfo.last_seq;
-    }
-
     self.getChanges = function(cb, since){
       since = since || 0;
       var changes = [];
-      var docIds = {}; // map to simulate a Sef of IDs
-      for (var seq = dbInfo.last_seq; seq > since; seq--){
-        storage.get(seqPrefix + seq, function(seqInfo){
-          if (seqInfo.id in docIds) return;
-          var change = {seq: seq, id: seqInfo.id, changes: seqInfo.changes};
-          if (seqInfo.deleted)
-            change.deleted = seqInfo.deleted;
-          changes.push(change);
-          docIds[seqInfo.id] = true;
+      var curSeq = since + 1;
+      var lastSeq;
+      var stop = false;
+      while(!stop){
+        storage.get(seqPrefix + curSeq, function(docId){
+          if (!docId){
+            stop = true;
+            lastSeq = curSeq - 1;
+          }else
+            storage.get(docPrefix + docId, function(doc){
+              if (!doc){
+                throw new Error('Doc not found: ' + curSeq + ', ' + docId)
+              }
+              var change = {seq: curSeq, id: docId, changes: [{rev: doc._rev}]};
+              if (doc._deleted)
+                change.deleted = doc._deleted;
+              changes.push(change);
+            })
         })
+        curSeq++;
       }
+      // remove dups
+      var docIds = {}; // simulate a set
+      var _changes = [];
+      for (var i = changes.length - 1; i >= 0; i--){
+        var change = changes[i];
+        if (change.id in docIds) continue;
+        docIds[change.id] = true
+        _changes.push(change);
+      }
+        
       cb({
-        results: changes,
-        last_seq: dbInfo.last_seq
+        results: _changes,
+        last_seq: lastSeq
       });
     }
     
@@ -874,9 +910,11 @@ var BrowserCouch = function(opts){
             }
           });
         }else{
-          var seqInfo;
-          storage.get(seqPrefix + res.seq, function(si){
-            seqInfo = si;
+          var revWhenDeleted;
+          storage.get(seqPrefix + res.seq, function(docId){
+            storage.get(docPrefix + docId, function(ddoc){
+              revWhenDeleted = ddoc._revWhenDeleted;
+            })
           })
           doc = {
             _id: id,
@@ -885,7 +923,7 @@ var BrowserCouch = function(opts){
           }
           doc._revisions = {
             start: parseInt(revParts[0]),
-            ids: [revParts[1], seqInfo._revWhenDeleted]
+            ids: [revParts[1], revWhenDeleted.split('-')[1]]
           }
         }
         docs.push(doc);
@@ -893,43 +931,56 @@ var BrowserCouch = function(opts){
       return ret
     }
     
-    function getRepInfo(target){
-      if (!dbInfo.replications) return 0;
-      return dbInfo.replications[target] || 0;
+    function getRepInfo(source, target){
+      var dbInfo;
+      storage.get(dbName, function(di){
+        dbInfo = di;
+      })
+      if (!dbInfo || !dbInfo.replications) return 0;
+      return dbInfo.replications[source + ',' + target] || 0;
     }
-    function setRepInfo(target, since){
+    function setRepInfo(source, target, since){
+      var dbInfo;
+      storage.get(dbName, function(di){
+        dbInfo = di;
+      })
+      if (!dbInfo)
+        dbInfo = {}
       if (!dbInfo.replications)
         dbInfo.replications = {};
-      dbInfo.replications[target] = since;
+      dbInfo.replications[source + ',' + target] = since;
       storage.put(dbName, dbInfo, function(){})
     }
     
     self.syncTo = function BC_syncTo(target, cb){
-      var since = getRepInfo(target);
+      var source = 'BrowserCouch:' + dbName
+      var since = getRepInfo(source, target);
       var couch = new Couch({url: target});
       var self = this;
       this.getChanges(function(changes){
         var bulkDocs = self.createBulkDocs(changes);
-        console.log('bulkDocs: ' + JSON.stringify(bulkDocs));
+        //console.log('bulkDocs: ' + JSON.stringify(bulkDocs));
         couch.post('_bulk_docs', bulkDocs, function(reply){
           couch.post('_ensure_full_commit', 'true', function(reply){
-            setRepInfo(target, changes.last_seq)
+            setRepInfo(source, target, changes.last_seq)
             if (cb) cb(reply)
           }, this)
         }, this)
-      });
+      }, since);
     }
     
-    self.syncFrom = function BC_syncFrom(target, cb){
+    self.syncFrom = function BC_syncFrom(source, cb){
       var self = this;
-      var since = this.lastSeq();
-      var couch = new Couch({url: target});
-      couch.get('_changes', {include_docs: true, since: since}, function(data){
-        var results = data.results;
+      var target = 'BrowserCouch:' + dbName;
+      var since = getRepInfo(source, target);
+      var couch = new Couch({url: source});
+      couch.get('_changes', {include_docs: true, since: since}, function(changes){
+        var results = changes.results;
         for (var i = 0; i < results.length; i++){
           var res = results[i];
           self.put(res.doc, function(){}, {new_edits: false});
         }
+        setRepInfo(source, target, changes.last_seq)
         if (cb) cb()
       })
     }
