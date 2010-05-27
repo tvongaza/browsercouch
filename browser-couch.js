@@ -650,7 +650,7 @@ var BrowserCouch = function(opts){
       });
     };
 
-    self.get = function DB_get(id, cb) {
+    self.get = function DB_get(id, cb, options) {
       cb = cb || function(){}
       storage.get(docPrefix + id, function(doc){
         if (doc && !doc._deleted)
@@ -679,22 +679,49 @@ var BrowserCouch = function(opts){
             console.log('new: ' + JSON.stringify(obj));
             throw new Error('Document update conflict.');
           }else{
+            function newHash(){
+              return (Math.random()*Math.pow(10,20));
+            }
             //= Update Rev =
             if (!obj._rev){
-              obj._rev = "1-" + (Math.random()*Math.pow(10,20));
-                // We're using the naive random versioning, rather
-                // than the md5 deterministic hash.
+              // We're using the naive random versioning, rather
+              // than the md5 deterministic hash.
+              obj._rev = "1-" + newHash();
             }else{
-              var iter = parseInt(obj._rev.split("-")[0]);
-              obj._rev = "" + (iter+1) +  
-                obj._rev.slice(obj._rev.indexOf("-"));
+              function revIndex(doc){
+                return parseInt(doc._rev.split('-')[0])
+              }
+              function revHash(doc){
+                return doc._rev.split('-')[1]
+              }
+              
+              if (newEdits){
+                obj._rev = (revIndex(obj)+1) + '-' + newHash();
+              }else if (orig && obj._rev != orig._rev){
+                var winner;
+                // use deterministic winner picking algorithm
+                if (revIndex(obj) > revIndex(orig))
+                  winner = obj
+                else if (revIndex(orig) > revIndex(obj))
+                  winner = orig
+                else if (revHash(obj) > revHash(orig))
+                  winner = obj
+                else
+                  winner = orig
+                  
+                var loser = obj === winner ? orig : obj;
+                obj = winner
+                
+                if (!obj._conflicts)
+                  obj._conflicts = []
+                obj._conflicts.push(loser._rev)
+              }
             }
-            self.docCount();
             if (!orig)
-              _docCount++;
+              _docCount = self.docCount() + 1;
             if (obj._deleted){
               obj._revWhenDeleted = orig._rev;
-              _docCount--;
+              _docCount = self.docCount() - 1;
             }
             var seq = self.lastSeq() + 1;
             _lastSeq = seq;
@@ -747,6 +774,7 @@ var BrowserCouch = function(opts){
     // 
     self.docCount = function DB_docCount() {
       if (_docCount !== undefined) return _docCount;
+      _docCount = 0;
       var self = this;
       var ids = [];
       var seq = 1;
