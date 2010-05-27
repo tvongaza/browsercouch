@@ -627,6 +627,7 @@ var BrowserCouch = function(opts){
         docPrefix = dbName + '_doc_',
         _lastSeq,
         _docCount;
+    self.name = name;
       
     var seqs = function(cb){
       storage.keys(seqPrefix, cb);
@@ -652,7 +653,7 @@ var BrowserCouch = function(opts){
     self.get = function DB_get(id, cb) {
       cb = cb || function(){}
       storage.get(docPrefix + id, function(doc){
-        if (!doc._deleted)
+        if (doc && !doc._deleted)
           cb(doc)
         else
           cb(null)
@@ -746,6 +747,7 @@ var BrowserCouch = function(opts){
     // 
     self.docCount = function DB_docCount() {
       if (_docCount !== undefined) return _docCount;
+      var self = this;
       var ids = [];
       var seq = 1;
       var stop = false;
@@ -755,8 +757,10 @@ var BrowserCouch = function(opts){
             stop = true;
             _docCount = ids.length;
           }else{
-            if (ids.indexOf(id) == -1)
-              ids.push(id)
+            self.get(id, function(doc){
+              if (doc && ids.indexOf(id) == -1)
+                ids.push(id)
+            })
           }
         })
         seq++
@@ -952,7 +956,7 @@ var BrowserCouch = function(opts){
       storage.put(dbName, dbInfo, function(){})
     }
     
-    self.syncTo = function BC_syncTo(target, cb){
+    self.syncToRemote = function BC_syncTo(target, cb){
       var source = 'BrowserCouch:' + dbName
       var since = getRepInfo(source, target);
       var couch = new Couch({url: target});
@@ -969,7 +973,7 @@ var BrowserCouch = function(opts){
       }, since);
     }
     
-    self.syncFrom = function BC_syncFrom(source, cb){
+    self.syncFromRemote = function BC_syncFrom(source, cb){
       var self = this;
       var target = 'BrowserCouch:' + dbName;
       var since = getRepInfo(source, target);
@@ -984,6 +988,67 @@ var BrowserCouch = function(opts){
         if (cb) cb()
       })
     }
+    
+    self.syncToLocal = function BC_syncToLocal(target, cb){
+      var self = this;
+      var targetDb;
+      if (typeof(target) == 'string'){
+        targetDb = BrowserCouch(target);
+        target = 'BrowserCouch:' + target;
+      }else{
+        targetDb = target;
+        target = 'BrowserCouch:' + target.name;
+      }
+      var source = 'BrowserCouch:' + dbName;
+      var since = getRepInfo(source, target);
+      this.getChanges(function(changes){
+        var results = changes.results;
+        for (var i = 0; i < results.length; i++){
+          var res = results[i];
+          if (res.deleted){
+            storage.get(docPrefix + res.id, function(ddoc){
+              targetDb.put(ddoc, function(){}, {new_edits: false});
+            })
+          }else
+            self.get(res.id, function(doc){
+              targetDb.put(doc, function(){}, {new_edits: false});
+            })
+        }
+        setRepInfo(source, target, changes.last_seq)
+        if (cb) cb({ok: true})
+      }, since);
+    }
+    
+    
+    // ==== Sync the database ====
+    // Emulates the CouchDB replication functionality
+    // At the moment only couch's on the same domain
+    // will work beause of XSS restrictions.
+    self.syncTo = function BC_syncTo(target, cb){
+      var self = this
+      var parts = target.split(":");
+      var proto = parts[0];
+      if (proto == 'BrowserCouch')
+        self.syncToLocal(parts[1], cb)
+      else if (proto == 'http')
+        self.syncToRemote(target, cb)
+      else
+        throw new Error('Invalid protocol: ' + target);
+    }
+    
+    self.syncFrom = function BC_syncFrom(source, cb){
+      var self = this
+      var parts = source.split(":");
+      var proto = parts[0];
+  
+      if (proto == 'BrowserCouch'){
+        var sourceDb = BrowserCouch(parts[1]);
+        sourceDb.syncToLocal(self, cb)
+      }else if (proto == 'http')
+        self.syncFromRemote(source, cb)
+      else
+        throw new Error('Invalid protocol: ' + source);
+    },
     
     cb(self)
   
@@ -1002,7 +1067,6 @@ var BrowserCouch = function(opts){
     //TODO
   } 
   
-  
   // == {{{BrowserCouch}}} Core Constructor ==
   //
   // {{{BrowserCouch}}} is the main object that clients will use.  It's
@@ -1019,29 +1083,6 @@ var BrowserCouch = function(opts){
       loaded : false,
       loadcbs : [],
       
-      // ==== Sync the database ====
-      // Emulates the CouchDB replication functionality
-      // At the moment only couch's on the same domain
-      // will work beause of XSS restrictions.
-      sync : function(target, syncOpts){
-        self.onload(function(){
-            var cb = function(rdb){
-              if (syncOpts.reverse){
-                bc.sync(rdb, self, syncOpts);
-              } else{
-              	bc.sync(self, rdb, syncOpts);
-              }	
-            };
-                
-            if (target.indexOf(":")>-1 && target.split(":")[0] === "BrowserCouch"){
-              bc.BrowserDatabase(target.split(":")[1],
-                options.storage || new bc.LocalStorage(), cb, options);
-            }else{
-              bc.SameDomainDB(target, cb, options.storage, options)
-            }
-            
-          });
-      },
       
       // ==== Add an onload function ====
       // Seeing as we're completely callback driven, and you're

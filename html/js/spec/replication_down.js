@@ -13,7 +13,7 @@ describe('BrowserCouch Replicate down', {async: true})
   })
   .should('replicate create', function(){
     var self = this
-    this.db.syncFrom(this.couch.baseUrl, function(){
+    this.db.syncFromRemote(this.couch.baseUrl, function(){
       self.db.get('1', function(emma){
         self.expect(emma.name).toBe('Emma')
         self.finish()
@@ -22,11 +22,11 @@ describe('BrowserCouch Replicate down', {async: true})
   })
   .should('replicate edit', function(){
     var self = this
-    self.db.syncFrom(this.couch.baseUrl, function(){
+    self.db.syncFromRemote(this.couch.baseUrl, function(){
       self.couch.get('1', null, function(doc){
         doc.name = 'Emily'
         self.couch.put(doc._id, doc, function(){
-          self.db.syncFrom(self.couch.baseUrl, function(){
+          self.db.syncFromRemote(self.couch.baseUrl, function(){
             self.db.get('1', function(emily){
               self.expect(emily.name).toBe('Emily')
               self.finish()
@@ -38,11 +38,11 @@ describe('BrowserCouch Replicate down', {async: true})
   })
   .should('replicate delete', function(){
     var self = this
-    self.db.syncFrom(self.couch.baseUrl, function(){
+    self.db.syncFromRemote(self.couch.baseUrl, function(){
       self.couch.get('1', null, function(doc){
         doc.name = 'Emily'
         self.couch.del(doc, function(){
-          self.db.syncFrom(self.couch.baseUrl, function(){
+          self.db.syncFromRemote(self.couch.baseUrl, function(){
             self.db.get('1', function(doc){
               self.expect(doc).toBe(null)
               self.expect(self.db.docCount()).toBe(0)
@@ -55,13 +55,13 @@ describe('BrowserCouch Replicate down', {async: true})
   })
   .should('replicate multiple changes', function(){
     var self = this
-    self.db.syncFrom(self.couch.baseUrl, function(){
+    self.db.syncFromRemote(self.couch.baseUrl, function(){
       self.couch.get('1', null, function(doc){
         doc.name = 'Emily'
         var alan = {_id: '2', name: 'Alan'}
         self.couch.put(alan._id, alan, function(){
           self.couch.del(doc, function(){
-            self.db.syncFrom(self.couch.baseUrl, function(){
+            self.db.syncFromRemote(self.couch.baseUrl, function(){
               self.db.get('1', function(doc){
                 self.expect(doc).toBe(null)
                 self.expect(self.db.docCount()).toBe(1)

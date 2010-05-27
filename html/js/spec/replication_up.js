@@ -12,7 +12,7 @@ describe('BrowserCouch Replicate Up', {async: true})
   .should('replicate create', function(){
     var self = this
     this.db.put({_id: '1', name: 'Emma'})
-    this.db.syncTo(this.couch.baseUrl, function(reply){
+    this.db.syncToRemote(this.couch.baseUrl, function(reply){
       console.log('reply: ' + reply)
       self.couch.get('_all_docs', {
         include_docs: true
@@ -27,11 +27,11 @@ describe('BrowserCouch Replicate Up', {async: true})
   .should('replicate edit', function(){
     var self = this
     this.db.put({_id: '1', name: 'Emma'})
-    this.db.syncTo(this.couch.baseUrl, function(){
+    this.db.syncToRemote(this.couch.baseUrl, function(){
       self.db.get('1', function(emma){
         emma.name = 'Emily'
         self.db.put(emma)
-        self.db.syncTo(self.couch.baseUrl, function(){
+        self.db.syncToRemote(self.couch.baseUrl, function(){
           self.couch.get('_all_docs', {
             include_docs: true
           }, function(data){
@@ -46,13 +46,13 @@ describe('BrowserCouch Replicate Up', {async: true})
   .should('replicate delete', function(){
     var self = this
     self.db.put({_id: '1', name: 'John'})
-    self.db.syncTo(self.couch.baseUrl, function(){
+    self.db.syncToRemote(self.couch.baseUrl, function(){
       self.db.get('1', function(john){
         self.db.del(john)
         self.db.getChanges(function(changes){
           console.log('changes: ' + JSON.stringify(changes));
         })
-        self.db.syncTo(self.couch.baseUrl, function(){
+        self.db.syncToRemote(self.couch.baseUrl, function(){
           self.couch.get('_all_docs', {
             include_docs: true
           }, function(data){
@@ -68,7 +68,7 @@ describe('BrowserCouch Replicate Up', {async: true})
     self.db.put({_id: '1', name: 'John'})
     self.db.put({_id: '2', name: 'Jane'})
     self.db.put({_id: '3', name: 'James'})
-    self.db.syncTo(self.couch.baseUrl, function(){
+    self.db.syncToRemote(self.couch.baseUrl, function(){
       self.couch.get('_all_docs', {
         include_docs: true
       }, function(data){
@@ -81,7 +81,7 @@ describe('BrowserCouch Replicate Up', {async: true})
         self.db.get('2', function(jane){
           self.db.del(jane)
         })
-        self.db.syncTo(self.couch.baseUrl, function(){
+        self.db.syncToRemote(self.couch.baseUrl, function(){
           self.couch.get('_all_docs', {
             include_docs: true
           }, function(data){
