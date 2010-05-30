@@ -136,67 +136,6 @@ var BrowserCouch = function(opts){
 
   window.Couch = Couch
   
-  // === {{{ModuleLoader}}} ===
-  //
-  // A really basic module loader that allows dependencies to be
-  // "lazy-loaded" when their functionality is needed.
-  
-  bc.ModuleLoader = {
-    LIBS: {JSON: "js/ext/json2.js",
-           UUID: "js/ext/uuid.js"},
-  
-    require: function ML_require(libs, cb) {
-      var self = this,
-          i = 0,
-          lastLib = "";
-  
-      if (!isArray(libs)){
-        libs = [libs];
-      }
-  
-      function loadNextLib() {
-        if (lastLib && !window[lastLib]){
-          throw new Error("Failed to load library: " + lastLib);
-        }
-        if (i == libs.length){
-          cb();
-        }
-        else {
-          var libName = libs[i];
-          i += 1;
-          if (window[libName]){
-            loadNextLib();
-          }
-          else {
-            var libUrl = self.LIBS[libName];
-            if (!libUrl){
-              throw new Error("Unknown lib: " + libName);
-            }
-            lastLib = libName;
-            self._loadScript(libUrl, window, loadNextLib);
-          }
-        }
-      }
-  
-      loadNextLib();
-    },
-  
-    _loadScript: function ML__loadScript(url, window, cb) {
-      var doc = window.document;
-      var script = doc.createElement("script");
-      script.setAttribute("src", url);
-      script.addEventListener(
-        "load",
-        function onLoad() {
-          script.removeEventListener("load", onLoad, false);
-          cb();
-        },
-        false
-      );
-      doc.body.appendChild(script);
-    }
-  };
-  
   // == MapReducer Implementations ==
   //
   // //MapReducer// is a generic interface for any map-reduce
@@ -568,32 +507,22 @@ var BrowserCouch = function(opts){
     }
   
       
-    this.get = function LS_get(name, cb) {
-      if (name in storage && storage[name])//.value)
-        bc.ModuleLoader.require('JSON',
-          function() {
-            var obj = JSON.parse(storage[name])//.value);
-            cb(obj);
-          });
+    this.get = function LS_get(name) {
+      if (name in storage && storage[name])
+        return JSON.parse(storage[name])
       else
-        cb(null);
+        return null;
     };
   
-    this.put = function LS_put(name, obj, cb) {
-      bc.ModuleLoader.require('JSON',
-        function() {
-          storage[name] = JSON.stringify(obj);
-          if (cb) cb();
-        });
+    this.put = function LS_put(name, obj) {
+      storage[name] = JSON.stringify(obj);
     };
     
-    this.remove = function(name, cb){
+    this.remove = function(name){
       delete storage[name];
-      if(cb){cb();}
-    
     }
     
-    this.keys = function(prefix, cb){
+    this.keys = function(prefix){
       var out = [];
       for (var i = 0; i < storage.length; i++){
         var key = storage.key(i);
@@ -601,7 +530,7 @@ var BrowserCouch = function(opts){
           out.push(key.slice(prefix.length, key.length));
         }
       }
-      cb(out);
+      return out;
     }
     
   }
@@ -620,7 +549,7 @@ var BrowserCouch = function(opts){
   
   // === Local Storage Database ===
   // TODO, rename this
-  bc.BrowserDatabase = function(name, storage, cb, options) {
+  bc.BrowserDatabase = function(name, storage, options) {
     var self = {},
         dbName = 'BC_DB_' + name,
         seqPrefix = dbName + '__seq_',
@@ -650,14 +579,12 @@ var BrowserCouch = function(opts){
       });
     };
 
-    self.get = function DB_get(id, cb, options) {
-      cb = cb || function(){}
-      storage.get(docPrefix + id, function(doc){
-        if (doc && !doc._deleted)
-          cb(doc)
-        else
-          cb(null)
-      });
+    self.get = function DB_get(id, options) {
+      var doc = storage.get(docPrefix + id)
+      if (doc && !doc._deleted)
+        return doc
+      else
+        return null
     };
     
     // === {{{PUT}}} ===
@@ -667,68 +594,67 @@ var BrowserCouch = function(opts){
     // url with the specified {{{id}}}.
     //
     // It creates or updates a document
-    self.put = function DB_put(document, cb, options) {
+    self.put = function DB_put(document, options) {
       options = options || {};
       var newEdits = 'new_edits' in options ? options.new_edits: true;
       
       var self = this;
       var putObj = function(obj){
-        storage.get(docPrefix + obj._id, function(orig){
-          if (newEdits && orig && orig._rev != obj._rev){
-            console.log('original: ' + JSON.stringify(orig));
-            console.log('new: ' + JSON.stringify(obj));
-            throw new Error('Document update conflict.');
-          }else{
-            function newHash(){
-              return (Math.random()*Math.pow(10,20));
-            }
-            //= Update Rev =
-            if (!obj._rev){
-              // We're using the naive random versioning, rather
-              // than the md5 deterministic hash.
-              obj._rev = "1-" + newHash();
-            }else{
-              function revIndex(doc){
-                return parseInt(doc._rev.split('-')[0])
-              }
-              function revHash(doc){
-                return doc._rev.split('-')[1]
-              }
-              
-              if (newEdits){
-                obj._rev = (revIndex(obj)+1) + '-' + newHash();
-              }else if (orig && obj._rev != orig._rev){
-                var winner;
-                // use deterministic winner picking algorithm
-                if (revIndex(obj) > revIndex(orig))
-                  winner = obj
-                else if (revIndex(orig) > revIndex(obj))
-                  winner = orig
-                else if (revHash(obj) > revHash(orig))
-                  winner = obj
-                else
-                  winner = orig
-                  
-                var loser = obj === winner ? orig : obj;
-                obj = winner
-                
-                if (!obj._conflicts)
-                  obj._conflicts = []
-                obj._conflicts.push(loser._rev)
-              }
-            }
-            if (!orig)
-              _docCount = self.docCount() + 1;
-            if (obj._deleted){
-              obj._revWhenDeleted = orig._rev;
-              _docCount = self.docCount() - 1;
-            }
-            var seq = self.lastSeq() + 1;
-            _lastSeq = seq;
-            storage.put(docPrefix + obj._id, obj, function(){});
-            storage.put(seqPrefix + seq, obj._id, function(){})
+        var orig = storage.get(docPrefix + obj._id)
+        if (newEdits && orig && orig._rev != obj._rev){
+          //console.log('original: ' + JSON.stringify(orig));
+          //console.log('new: ' + JSON.stringify(obj));
+          throw new Error('Document update conflict.');
+        }else{
+          function newHash(){
+            return (Math.random()*Math.pow(10,20));
           }
-        })   
+          //= Update Rev =
+          if (!obj._rev){
+            // We're using the naive random versioning, rather
+            // than the md5 deterministic hash.
+            obj._rev = "1-" + newHash();
+          }else{
+            function revIndex(doc){
+              return parseInt(doc._rev.split('-')[0])
+            }
+            function revHash(doc){
+              return doc._rev.split('-')[1]
+            }
+            
+            if (newEdits){
+              obj._rev = (revIndex(obj)+1) + '-' + newHash();
+            }else if (orig && obj._rev != orig._rev){
+              var winner;
+              // use deterministic winner picking algorithm
+              if (revIndex(obj) > revIndex(orig))
+                winner = obj
+              else if (revIndex(orig) > revIndex(obj))
+                winner = orig
+              else if (revHash(obj) > revHash(orig))
+                winner = obj
+              else
+                winner = orig
+                
+              var loser = obj === winner ? orig : obj;
+              obj = winner
+              
+              if (!obj._conflicts)
+                obj._conflicts = []
+              obj._conflicts.push(loser._rev)
+            }
+          }
+          if (!orig)
+            _docCount = self.docCount() + 1;
+          if (obj._deleted){
+            obj._revWhenDeleted = orig._rev;
+            _docCount = self.docCount() - 1;
+          }
+          var seq = self.lastSeq() + 1;
+          _lastSeq = seq;
+          storage.put(docPrefix + obj._id, obj);
+          storage.put(seqPrefix + seq, obj._id)
+        }
           
       }
     
@@ -739,8 +665,6 @@ var BrowserCouch = function(opts){
       } else{
         putObj(document);
       }
-      if (cb)
-        cb();
     };
     
 
@@ -752,45 +676,35 @@ var BrowserCouch = function(opts){
     // then the functionality is the same as a PUT operation,
     // however if there is no ID, then one will be created.
     //
-    self.post =function(data, cb, options){
-      var _t = this
+    self.post =function(data, options){
       if (!data._id)
-        bc.ModuleLoader.require('UUID', function(){
-          data._id = new UUID().createUUID();
-          _t.put(data, function(){cb(data._id)}, options);
-        });
-      else{  
-        _t.put(data, function(){cb(data._id)}, options)
-      }
+        data._id = new UUID().createUUID();
+      this.put(data, options);
     }
 
     // === {{{DELETE}}} ===
     //
     // Delete the document. 
-    self.del = function(doc, cb){
-      this.put({_id : doc._id, _rev : doc._rev, _deleted : true}, cb);
+    self.del = function(doc){
+      this.put({_id : doc._id, _rev : doc._rev, _deleted : true});
     }
 
     // 
     self.docCount = function DB_docCount() {
       if (_docCount !== undefined) return _docCount;
       _docCount = 0;
-      var self = this;
       var ids = [];
       var seq = 1;
-      var stop = false;
-      while (!stop){
-        storage.get(seqPrefix + seq, function(id){
-          if (!id){
-            stop = true;
-            _docCount = ids.length;
-          }else{
-            self.get(id, function(doc){
-              if (doc && ids.indexOf(id) == -1)
-                ids.push(id)
-            })
-          }
-        })
+      while (true){
+        var id = storage.get(seqPrefix + seq);
+        if (!id){
+          _docCount = ids.length;
+          break;
+        }else{
+          var doc = this.get(id);
+          if (doc && ids.indexOf(id) == -1)
+            ids.push(id);
+        }
         seq++
       }
       return _docCount;
@@ -799,14 +713,12 @@ var BrowserCouch = function(opts){
     self.lastSeq = function BC_lastSeq(){
       if (_lastSeq !== undefined) return _lastSeq
       var seq = 1;
-      var stop = false;
-      while (!stop){
-        storage.get(seqPrefix + seq, function(id){
-          if (!id){
-            stop = true;
-            _lastSeq = seq - 1;
-          }
-        })
+      while (true){
+        var id = storage.get(seqPrefix + seq);
+        if (!id){
+          _lastSeq = seq - 1;
+          break;
+        }
         seq++
       }
       return _lastSeq;
@@ -881,28 +793,27 @@ var BrowserCouch = function(opts){
         });
     };
     
-    self.getChanges = function(cb, since){
-      since = since || 0;
+    self.getChanges = function(options){
+      options = options || {};
+      since = options.since || 0;
       var changes = [];
       var curSeq = since + 1;
       var lastSeq;
-      var stop = false;
-      while(!stop){
-        storage.get(seqPrefix + curSeq, function(docId){
-          if (!docId){
-            stop = true;
-            lastSeq = curSeq - 1;
-          }else
-            storage.get(docPrefix + docId, function(doc){
-              if (!doc){
-                throw new Error('Doc not found: ' + curSeq + ', ' + docId)
-              }
-              var change = {seq: curSeq, id: docId, changes: [{rev: doc._rev}]};
-              if (doc._deleted)
-                change.deleted = doc._deleted;
-              changes.push(change);
-            })
-        })
+      while(true){
+        var docId = storage.get(seqPrefix + curSeq);
+        if (!docId){
+          lastSeq = curSeq - 1;
+          break;
+        }else{
+          var doc = storage.get(docPrefix + docId);
+          if (!doc){
+            throw new Error('Doc not found: ' + curSeq + ', ' + docId)
+          }
+          var change = {seq: curSeq, id: docId, changes: [{rev: doc._rev}]};
+          if (doc._deleted)
+            change.deleted = doc._deleted;
+          changes.push(change);
+        }
         curSeq++;
       }
       // remove dups
@@ -915,10 +826,10 @@ var BrowserCouch = function(opts){
         _changes.push(change);
       }
         
-      cb({
+      return {
         results: _changes,
         last_seq: lastSeq
-      });
+      }
     }
     
     self.createBulkDocs = function BC_createBulkDocs(changes){
@@ -934,20 +845,15 @@ var BrowserCouch = function(opts){
         var revParts = rev.split('-')
         var doc;
         if (!res.deleted){
-          self.get(id, function(d){
-            doc = d
-            doc._revisions = {
-              start: parseInt(revParts[0]),
-              ids: [revParts[1]]
-            }
-          });
+          doc = self.get(id)
+          doc._revisions = {
+            start: parseInt(revParts[0]),
+            ids: [revParts[1]]
+          }
         }else{
-          var revWhenDeleted;
-          storage.get(seqPrefix + res.seq, function(docId){
-            storage.get(docPrefix + docId, function(ddoc){
-              revWhenDeleted = ddoc._revWhenDeleted;
-            })
-          })
+          var docId = storage.get(seqPrefix + res.seq);
+          var ddoc = storage.get(docPrefix + docId);
+          var revWhenDeleted = ddoc._revWhenDeleted;
           doc = {
             _id: id,
             _rev: rev,
@@ -984,24 +890,22 @@ var BrowserCouch = function(opts){
       storage.put(dbName, dbInfo, function(){})
     }
     
-    self.syncToRemote = function BC_syncTo(target, cb){
+    self.syncToRemote = function BC_syncToRemote(target, cb){
       var source = 'BrowserCouch:' + dbName
       var since = getRepInfo(source, target);
       var couch = new Couch({url: target});
-      var self = this;
-      this.getChanges(function(changes){
-        var bulkDocs = self.createBulkDocs(changes);
-        //console.log('bulkDocs: ' + JSON.stringify(bulkDocs));
-        couch.post('_bulk_docs', bulkDocs, function(reply){
-          couch.post('_ensure_full_commit', 'true', function(reply){
-            setRepInfo(source, target, changes.last_seq)
-            if (cb) cb(reply)
-          }, this)
+      var changes = this.getChanges({since: since});
+      var bulkDocs = this.createBulkDocs(changes);
+      //console.log('bulkDocs: ' + JSON.stringify(bulkDocs));
+      couch.post('_bulk_docs', bulkDocs, function(reply){
+        couch.post('_ensure_full_commit', 'true', function(reply){
+          setRepInfo(source, target, changes.last_seq)
+          if (cb) cb(reply)
         }, this)
-      }, since);
+      }, this)
     }
     
-    self.syncFromRemote = function BC_syncFrom(source, cb){
+    self.syncFromRemote = function BC_syncFromRemote(source, cb){
       var self = this;
       var target = 'BrowserCouch:' + dbName;
       var since = getRepInfo(source, target);
@@ -1010,7 +914,7 @@ var BrowserCouch = function(opts){
         var results = changes.results;
         for (var i = 0; i < results.length; i++){
           var res = results[i];
-          self.put(res.doc, function(){}, {new_edits: false});
+          self.put(res.doc, {new_edits: false});
         }
         setRepInfo(source, target, changes.last_seq)
         if (cb) cb()
@@ -1018,7 +922,6 @@ var BrowserCouch = function(opts){
     }
     
     self.syncToLocal = function BC_syncToLocal(target, cb){
-      var self = this;
       var targetDb;
       if (typeof(target) == 'string'){
         targetDb = BrowserCouch(target);
@@ -1029,22 +932,20 @@ var BrowserCouch = function(opts){
       }
       var source = 'BrowserCouch:' + dbName;
       var since = getRepInfo(source, target);
-      this.getChanges(function(changes){
-        var results = changes.results;
-        for (var i = 0; i < results.length; i++){
-          var res = results[i];
-          if (res.deleted){
-            storage.get(docPrefix + res.id, function(ddoc){
-              targetDb.put(ddoc, function(){}, {new_edits: false});
-            })
-          }else
-            self.get(res.id, function(doc){
-              targetDb.put(doc, function(){}, {new_edits: false});
-            })
+      var changes = this.getChanges({since: since});
+      var results = changes.results;
+      for (var i = 0; i < results.length; i++){
+        var res = results[i];
+        if (res.deleted){
+          var ddoc = storage.get(docPrefix + res.id);
+          targetDb.put(ddoc, function(){}, {new_edits: false});
+        }else{
+          var doc = this.get(res.id);
+          targetDb.put(doc, function(){}, {new_edits: false});
         }
-        setRepInfo(source, target, changes.last_seq)
-        if (cb) cb({ok: true})
-      }, since);
+      }
+      setRepInfo(source, target, changes.last_seq)
+      if (cb) cb({ok: true})
     }
     
     
@@ -1053,19 +954,17 @@ var BrowserCouch = function(opts){
     // At the moment only couch's on the same domain
     // will work beause of XSS restrictions.
     self.syncTo = function BC_syncTo(target, cb){
-      var self = this
       var parts = target.split(":");
       var proto = parts[0];
       if (proto == 'BrowserCouch')
-        self.syncToLocal(parts[1], cb)
+        this.syncToLocal(parts[1], cb)
       else if (proto == 'http')
-        self.syncToRemote(target, cb)
+        this.syncToRemote(target, cb)
       else
         throw new Error('Invalid protocol: ' + target);
     }
     
     self.syncFrom = function BC_syncFrom(source, cb){
-      var self = this
       var parts = source.split(":");
       var proto = parts[0];
   
@@ -1076,9 +975,9 @@ var BrowserCouch = function(opts){
         self.syncFromRemote(source, cb)
       else
         throw new Error('Invalid protocol: ' + source);
-    },
+    }
     
-    cb(self)
+    return self;
   
   }
 
@@ -1105,60 +1004,11 @@ var BrowserCouch = function(opts){
   //
   var cons = function(name, options){
     var options = options || {};
-    
-    var self = {
-      // 'private' variables - perhaps we should move these into the closure
-      loaded : false,
-      loadcbs : [],
-      
-      
-      // ==== Add an onload function ====
-      // Seeing as we're completely callback driven, and you're
-      // frequently going to want to do a bunch of things once
-      // the database is loaded, being able to add an arbitrary
-      // number of onload functions is useful.
-      // 
-      // Onload functions are called with no arguments, but the 
-      // database object from the constructor is now ready. 
-      // (TODO - change this?)
-      //
-      onload : function(func){
-        if (self.loaded){
-          func(self);
-        } else{
-          self.loadcbs.push(func);
-        }   
-      }
-      
-    
-    
-    };
     // Create a database wrapper.
-    bc.BrowserDatabase(name,
+    return bc.BrowserDatabase(name,
       options.storage || new bc.LocalStorage(), // TODO - check local storage is available
-      function(db){
-        // == TODO ==
-        // We're copying the resultant methods back onto
-        // the self object. Could do this better.
-        for (var k in db){
-          self[k] = db[k];
-        }  
-        
-        // Fire the onload callbacks
-        self.loaded = true;
-        for (var cbi in self.loadcbs){
-            self.loadcbs[cbi](self);
-          }
-      }, options.storage, options);
-	       
-      return self;   
+      options);
   }
-  
-  // == TODO ==
-  // We're copying the bc methods onto the Database object. 
-  // Need to do this better, should research the jquery object.
-  for (var k in bc){
-    cons[k] = bc[k];
-  }
+  cons.__proto__ = bc;
   return cons
 }();  

@@ -1,46 +1,32 @@
-describe('BrowserCouch Basic CRUD', {async: true})
+describe('BrowserCouch Basic CRUD')
   .before(function(){
     localStorage.clear();
     this.db = BrowserCouch("basic", {storage: new BrowserCouch.LocalStorage()});
-    this.finish();
   })
   .should('remember what I put', function(){
-    var self = this
     this.db.put({_id: '1', name: 'Emma'})
-    this.db.get('1', function(doc){
-      self.expect(doc.name).toBe('Emma')
-      self.finish()
-    })
+    var doc = this.db.get('1')
+    expect(doc.name).toBe('Emma')
   })
   .should('have length', function(){
-    this.expect(this.db.docCount()).toBe(0)
-    this.finish();
+    expect(this.db.docCount()).toBe(0)
   })
   .should('have lastSeq', function(){
     this.expect(this.db.lastSeq()).toBe(0);
     this.finish();
   })
   .should('bump docCount and lastSeq when added doc', function(){
-    var self = this
     var db = this.db
     db.put({_id: '1', name: 'Emma'})
-    db.get('1', function(doc){
-      self.expect(db.lastSeq()).toBe(1)
-      self.expect(db.docCount()).toBe(1)
-      self.finish()
-    })
+    var doc = db.get('1')
+    expect(db.lastSeq()).toBe(1)
+    expect(db.docCount()).toBe(1)
   })
   .should('delete', function(){
-    var self = this
     var db = this.db
     db.put({_id: '1', name: 'Emma'})
-    db.get('1', function(doc){
-      db.del(doc, function(){
-        self.expect(db.docCount()).toBe(0)
-        db.get('1', function(doc){
-          self.expect(doc).toBe(null);
-          self.finish();
-        })
-      })
-    })
+    var doc = db.get('1')
+    db.del(doc)
+    expect(db.docCount()).toBe(0)
+    expect(db.get('1')).toBe(null)
   })

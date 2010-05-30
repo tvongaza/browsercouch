@@ -13,11 +13,11 @@ describe('BrowserCouch Replicate Up', {async: true})
     var self = this
     this.db.put({_id: '1', name: 'Emma'})
     this.db.syncToRemote(this.couch.baseUrl, function(reply){
-      console.log('reply: ' + reply)
+      //console.log('reply: ' + reply)
       self.couch.get('_all_docs', {
         include_docs: true
       }, function(data){
-        console.log(JSON.stringify(data))
+        //console.log(JSON.stringify(data))
         self.expect(data.total_rows).toBe(1)
         self.expect(data.rows[0].doc.name).toBe('Emma')
         self.finish()
@@ -28,17 +28,16 @@ describe('BrowserCouch Replicate Up', {async: true})
     var self = this
     this.db.put({_id: '1', name: 'Emma'})
     this.db.syncToRemote(this.couch.baseUrl, function(){
-      self.db.get('1', function(emma){
-        emma.name = 'Emily'
-        self.db.put(emma)
-        self.db.syncToRemote(self.couch.baseUrl, function(){
-          self.couch.get('_all_docs', {
-            include_docs: true
-          }, function(data){
-            self.expect(data.total_rows).toBe(1)
-            self.expect(data.rows[0].doc.name).toBe('Emily')
-            self.finish()
-          })
+      var emma = self.db.get('1')
+      emma.name = 'Emily'
+      self.db.put(emma)
+      self.db.syncToRemote(self.couch.baseUrl, function(){
+        self.couch.get('_all_docs', {
+          include_docs: true
+        }, function(data){
+          self.expect(data.total_rows).toBe(1)
+          self.expect(data.rows[0].doc.name).toBe('Emily')
+          self.finish()
         })
       })
     })
@@ -47,18 +46,14 @@ describe('BrowserCouch Replicate Up', {async: true})
     var self = this
     self.db.put({_id: '1', name: 'John'})
     self.db.syncToRemote(self.couch.baseUrl, function(){
-      self.db.get('1', function(john){
-        self.db.del(john)
-        self.db.getChanges(function(changes){
-          console.log('changes: ' + JSON.stringify(changes));
-        })
-        self.db.syncToRemote(self.couch.baseUrl, function(){
-          self.couch.get('_all_docs', {
-            include_docs: true
-          }, function(data){
-            self.expect(data.total_rows).toBe(0)
-            self.finish()
-          })
+      var john = self.db.get('1')
+      self.db.del(john)
+      self.db.syncToRemote(self.couch.baseUrl, function(){
+        self.couch.get('_all_docs', {
+          include_docs: true
+        }, function(data){
+          self.expect(data.total_rows).toBe(0)
+          self.finish()
         })
       })
     })
@@ -74,13 +69,11 @@ describe('BrowserCouch Replicate Up', {async: true})
       }, function(data){
         self.expect(data.total_rows).toBe(3)
         self.expect(data.rows[0].doc.name).toBe('John')
-        self.db.get('1', function(john){
-          john.name = 'Joan'
-          self.db.put(john)
-        })
-        self.db.get('2', function(jane){
-          self.db.del(jane)
-        })
+        var john = self.db.get('1')
+        john.name = 'Joan'
+        self.db.put(john)
+        var jane = self.db.get('2')
+        self.db.del(jane)
         self.db.syncToRemote(self.couch.baseUrl, function(){
           self.couch.get('_all_docs', {
             include_docs: true

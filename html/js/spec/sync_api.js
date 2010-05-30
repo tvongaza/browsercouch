@@ -38,26 +38,24 @@ describe('BrowserCouch sync API', {async: true})
     db2.put({_id: '2', name: 'Dan'})
     this.db.syncFrom('BrowserCouch:sync2', function(reply){
       self.expect(reply.ok).toBe(true)
-      self.db.get('2', function(doc){
-        self.expect(doc.name).toBe('Dan')
-        self.expect(self.db.docCount()).toBe(2)
-        self.finish()
-      })
+      var doc = self.db.get('2')
+      self.expect(doc.name).toBe('Dan')
+      self.expect(self.db.docCount()).toBe(2)
+      self.finish()
     })
   })
   .should('sync from remote', function(){
     var self = this
     var couch = new Couch({name: 'cloud'})
     couch.drop(function(){
-        couch.create(function(){
-            couch.put('1', {name: 'Emma'}, function(){
-              self.db.syncFrom(couch.baseUrl, function(){
-                self.db.get('1', function(emma){
-                  self.expect(emma.name).toBe('Emma')
-                  self.finish()
-                })
-              })
-            })
+      couch.create(function(){
+        couch.put('1', {name: 'Emma'}, function(){
+          self.db.syncFrom(couch.baseUrl, function(){
+            var emma = self.db.get('1')
+            self.expect(emma.name).toBe('Emma')
+            self.finish()
+          })
         })
+      })
     })
   })
