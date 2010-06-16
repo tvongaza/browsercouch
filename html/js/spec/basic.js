@@ -22,6 +22,11 @@ describe('BrowserCouch Basic CRUD')
     expect(db.lastSeq()).toBe(1)
     expect(db.docCount()).toBe(1)
   })
+  .should('set _rev on put', function(){
+    var emma = {_id: '1', name: 'Emma'}
+    this.db.put(emma)
+    expect(emma._rev).notToBe(undefined)
+  })
   .should('delete', function(){
     var db = this.db
     db.put({_id: '1', name: 'Emma'})

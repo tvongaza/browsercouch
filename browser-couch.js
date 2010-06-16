@@ -581,9 +581,15 @@ var BrowserCouch = function(opts){
 
     self.get = function DB_get(id, options) {
       var doc = storage.get(docPrefix + id)
-      if (doc && !doc._deleted)
-        return doc
-      else
+      if (doc){
+        if (options && options.rev){
+          if (doc._conflict_revisions){
+            doc = doc._conflict_revisions[options.rev]
+          }
+        }
+        if (!doc || doc._deleted) return null
+        else return doc
+      }else
         return null
     };
     
@@ -600,29 +606,58 @@ var BrowserCouch = function(opts){
       
       var self = this;
       var putObj = function(obj){
+        
+        function newHash(){
+          return (Math.random()*Math.pow(10,20));
+        }
+        function revIndex(doc){
+          return parseInt(doc._rev.split('-')[0])
+        }
+        function revHash(doc){
+          return doc._rev.split('-')[1]
+        }
+        
         var orig = storage.get(docPrefix + obj._id)
-        if (newEdits && orig && orig._rev != obj._rev){
+        if (newEdits && orig && orig._rev != obj._rev && (
+            !orig._conflicts || orig._conflicts.indexOf(obj._rev) == -1
+          )){
           //console.log('original: ' + JSON.stringify(orig));
           //console.log('new: ' + JSON.stringify(obj));
           throw new Error('Document update conflict.');
         }else{
-          function newHash(){
-            return (Math.random()*Math.pow(10,20));
-          }
           //= Update Rev =
           if (!obj._rev){
             // We're using the naive random versioning, rather
             // than the md5 deterministic hash.
             obj._rev = "1-" + newHash();
           }else{
-            function revIndex(doc){
-              return parseInt(doc._rev.split('-')[0])
-            }
-            function revHash(doc){
-              return doc._rev.split('-')[1]
-            }
             
             if (newEdits){
+              if (obj._rev != orig._rev){
+                // conflict management
+                if (obj._deleted){
+                  // if deleting a conflict revision, we delete only that revision
+                  delete orig._conflict_revisions[obj._rev];
+                  orig._conflicts = keys(orig._conflict_revisions);
+                  if (orig._conflicts.length == 0)
+                    delete orig._conflicts;
+                  // promote original back as current doc
+                  obj = orig;
+                }else{
+                  var conflictRevisions = orig._conflict_revisions;
+                  var confDoc = conflictRevisions[obj._rev];
+                  delete conflictRevisions[obj._rev];
+                  delete orig._conflicts;
+                  delete orig._conflict_revisions;
+                  conflictRevisions[orig._rev] = orig;
+                  obj._conflicts = keys(conflictRevisions);
+                  obj._conflict_revisions = conflictRevisions;
+                }
+              }else{
+                obj._conflicts = orig._conflicts;
+                obj._conflict_revisions = orig._conflict_revisions;
+              }
+              
               obj._rev = (revIndex(obj)+1) + '-' + newHash();
             }else if (orig && obj._rev != orig._rev){
               var winner;
@@ -642,6 +677,9 @@ var BrowserCouch = function(opts){
               if (!obj._conflicts)
                 obj._conflicts = []
               obj._conflicts.push(loser._rev)
+              if (!obj._conflict_revisions)
+                obj._conflict_revisions = {}
+              obj._conflict_revisions[loser._rev] = loser
             }
           }
           if (!orig)
@@ -653,7 +691,7 @@ var BrowserCouch = function(opts){
           var seq = self.lastSeq() + 1;
           _lastSeq = seq;
           storage.put(docPrefix + obj._id, obj);
-          storage.put(seqPrefix + seq, obj._id)
+          storage.put(seqPrefix + seq, obj._id);
         }
           
       }
@@ -685,7 +723,7 @@ var BrowserCouch = function(opts){
     // === {{{DELETE}}} ===
     //
     // Delete the document. 
-    self.del = function(doc){
+    self.del = function(doc, options){
       this.put({_id : doc._id, _rev : doc._rev, _deleted : true});
     }
 
@@ -938,10 +976,10 @@ var BrowserCouch = function(opts){
         var res = results[i];
         if (res.deleted){
           var ddoc = storage.get(docPrefix + res.id);
-          targetDb.put(ddoc, function(){}, {new_edits: false});
+          targetDb.put(ddoc, {new_edits: false});
         }else{
           var doc = this.get(res.id);
-          targetDb.put(doc, function(){}, {new_edits: false});
+          targetDb.put(doc, {new_edits: false});
         }
       }
       setRepInfo(source, target, changes.last_seq)
