@@ -928,7 +928,7 @@ var BrowserCouch = function(opts){
       storage.put(dbName, dbInfo, function(){})
     }
     
-    self.syncToRemote = function BC_syncToRemote(target, cb){
+    self.syncToRemote = function BC_syncToRemote(target, cb, context){
       var source = 'BrowserCouch:' + dbName
       var since = getRepInfo(source, target);
       var couch = new Couch({url: target});
@@ -938,12 +938,12 @@ var BrowserCouch = function(opts){
       couch.post('_bulk_docs', bulkDocs, function(reply){
         couch.post('_ensure_full_commit', 'true', function(reply){
           setRepInfo(source, target, changes.last_seq)
-          if (cb) cb(reply)
+          if (cb) cb.call(context, reply)
         }, this)
       }, this)
     }
     
-    self.syncFromRemote = function BC_syncFromRemote(source, cb){
+    self.syncFromRemote = function BC_syncFromRemote(source, cb, context){
       var self = this;
       var target = 'BrowserCouch:' + dbName;
       var since = getRepInfo(source, target);
@@ -955,7 +955,7 @@ var BrowserCouch = function(opts){
           self.put(res.doc, {new_edits: false});
         }
         setRepInfo(source, target, changes.last_seq)
-        if (cb) cb()
+        if (cb) cb.call(context)
       })
     }
     
