@@ -28,7 +28,7 @@ describe('BrowserCouch conflict management(local)')
     var doc2b = this.db2.get('foo', {rev: doc2._conflicts[0]})
     expect(doc2b.count).toBe(2)
   })
-  .should('be able to resolve conflicts', function(){
+  .should('be able to resolve conflicts by removing winner', function(){
     // remove the annointed revision
     var doc = this.db2.get('foo')
     var docB = this.db2.get('foo', {rev: doc._conflicts[0]})
@@ -38,6 +38,14 @@ describe('BrowserCouch conflict management(local)')
     this.db2.del(doc)
     doc = this.db2.get('foo')
     expect(doc._conflicts).toBe(undefined)
+  })
+  .should('be able to resolve conflicts by removing loser', function(){
+    var doc = this.db2.get('foo')
+    var docB = this.db2.get('foo', {rev: doc._conflicts[0]})
+    this.db2.del(docB)
+    doc = this.db2.get('foo')
+    expect(doc._conflicts).toBe(undefined)
+    expect(doc._conflict_revisions).toBe(undefined)
   })
   
   

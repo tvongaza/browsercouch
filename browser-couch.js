@@ -639,8 +639,10 @@ var BrowserCouch = function(opts){
                   // if deleting a conflict revision, we delete only that revision
                   delete orig._conflict_revisions[obj._rev];
                   orig._conflicts = keys(orig._conflict_revisions);
-                  if (orig._conflicts.length == 0)
+                  if (orig._conflicts.length == 0){
                     delete orig._conflicts;
+                    delete orig._conflict_revisions;
+                  }
                   // promote original back as current doc
                   obj = orig;
                 }else{
@@ -685,6 +687,7 @@ var BrowserCouch = function(opts){
           if (!orig)
             _docCount = self.docCount() + 1;
           if (obj._deleted){
+            if (!orig) return; // forget about it
             obj._revWhenDeleted = orig._rev;
             _docCount = self.docCount() - 1;
           }
