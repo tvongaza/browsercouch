@@ -554,8 +554,8 @@ var BrowserCouch = function(opts){
         dbName = 'BC_DB_' + name,
         seqPrefix = dbName + '__seq_',
         docPrefix = dbName + '_doc_',
-        _lastSeq,
-        _docCount;
+        dbInfo = storage.get(dbName) || {lastSeq: 0, docCount: 0},
+        changeListeners = []
     self.name = name;
       
     var seqs = function(cb){
@@ -684,17 +684,27 @@ var BrowserCouch = function(opts){
               obj._conflict_revisions[loser._rev] = loser
             }
           }
-          if (!orig)
-            _docCount = self.docCount() + 1;
+          if (!orig){
+            dbInfo.docCount = self.docCount() + 1;
+            storage.put(dbName, dbInfo)
+          }
           if (obj._deleted){
             if (!orig) return; // forget about it
             obj._revWhenDeleted = orig._rev;
-            _docCount = self.docCount() - 1;
+            dbInfo.docCount = self.docCount() - 1;
+            storage.put(dbName, dbInfo)
           }
           var seq = self.lastSeq() + 1;
-          _lastSeq = seq;
           storage.put(docPrefix + obj._id, obj);
           storage.put(seqPrefix + seq, obj._id);
+          dbInfo.lastSeq = seq;
+          storage.put(dbName, dbInfo)
+          
+          // notify change listeners
+          for (var i = 0; i < changeListeners.length; i++){
+              var listener = changeListeners[i]
+              listener(obj)
+          }
         }
           
       }
@@ -732,37 +742,11 @@ var BrowserCouch = function(opts){
 
     // 
     self.docCount = function DB_docCount() {
-      if (_docCount !== undefined) return _docCount;
-      _docCount = 0;
-      var ids = [];
-      var seq = 1;
-      while (true){
-        var id = storage.get(seqPrefix + seq);
-        if (!id){
-          _docCount = ids.length;
-          break;
-        }else{
-          var doc = this.get(id);
-          if (doc && ids.indexOf(id) == -1)
-            ids.push(id);
-        }
-        seq++
-      }
-      return _docCount;
+      return dbInfo.docCount;
     };
     
     self.lastSeq = function BC_lastSeq(){
-      if (_lastSeq !== undefined) return _lastSeq
-      var seq = 1;
-      while (true){
-        var id = storage.get(seqPrefix + seq);
-        if (!id){
-          _lastSeq = seq - 1;
-          break;
-        }
-        seq++
-      }
-      return _lastSeq;
+      return dbInfo.lastSeq;
     }
 
     // === View ===
@@ -873,6 +857,14 @@ var BrowserCouch = function(opts){
       }
     }
     
+    self.addChangeListener = function BC_addChangeListener(callback){
+        changeListeners.push(callback)
+    }
+    
+    self.dbInfo = function BC_dbInfo(){
+        return dbInfo;
+    }
+    
     self.createBulkDocs = function BC_createBulkDocs(changes){
       var docs;
       var ret = {
@@ -911,24 +903,14 @@ var BrowserCouch = function(opts){
     }
     
     function getRepInfo(source, target){
-      var dbInfo;
-      storage.get(dbName, function(di){
-        dbInfo = di;
-      })
       if (!dbInfo || !dbInfo.replications) return 0;
       return dbInfo.replications[source + ',' + target] || 0;
     }
     function setRepInfo(source, target, since){
-      var dbInfo;
-      storage.get(dbName, function(di){
-        dbInfo = di;
-      })
-      if (!dbInfo)
-        dbInfo = {}
       if (!dbInfo.replications)
         dbInfo.replications = {};
       dbInfo.replications[source + ',' + target] = since;
-      storage.put(dbName, dbInfo, function(){})
+      storage.put(dbName, dbInfo)
     }
     
     self.syncToRemote = function BC_syncToRemote(target, cb, context){
