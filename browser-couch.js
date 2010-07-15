@@ -114,11 +114,10 @@ var BrowserCouch = function(opts){
                   try{
                       result = JSON.parse(this.responseText)
                   }catch(e){
-                      console.log('Parse JSON failed: ' + this.responseText)
                       result = null
                   }
 
-                  callback.call(context, result)
+                  callback.call(context, result, this.status)
               }else if(this.readyState == 1){
                   this.setRequestHeader('Accept', 'application/json')
               }
@@ -907,15 +906,40 @@ var BrowserCouch = function(opts){
     
     self.syncToRemote = function BC_syncToRemote(target, cb, context){
       var source = 'BrowserCouch:' + dbName
-      var since = getRepInfo(source, target);
-      var couch = new Couch({url: target});
-      var changes = this.getChanges({since: since});
-      var bulkDocs = this.createBulkDocs(changes);
+      var couch = new Couch({url: target})
       //console.log('bulkDocs: ' + JSON.stringify(bulkDocs));
-      couch.post('_bulk_docs', bulkDocs, function(reply){
-        couch.post('_ensure_full_commit', 'true', function(reply){
-          setRepInfo(source, target, changes.last_seq)
-          if (cb) cb.call(context, reply)
+
+      var repInfoID = '_local/' + MD5(location.host + ':' + dbName + ':' + couch.baseUrl)
+      couch.get(repInfoID, null, function(repInfo, status){
+        if (!repInfo){
+          if (cb) cb.call(context, repInfo, status)
+          return
+        }
+        if (repInfo.error){
+          repInfo = {
+            _id: repInfoID,
+            session_id: new UUID().createUUID(),
+            source_last_seq: 0
+          }
+        }
+        var since = repInfo.source_last_seq
+        var changes = this.getChanges({since: since});
+        var bulkDocs = this.createBulkDocs(changes);
+        couch.post('_bulk_docs', bulkDocs, function(reply, status){
+          if (!reply || reply.error){
+            if (cb) cb.call(context, reply, status)
+            return
+          }
+          couch.post('_ensure_full_commit', 'true', function(reply, status){
+            if (!reply || reply.error){
+              if (cb) cb.call(context, reply, status)
+              return
+            }
+            couch.put(repInfoID, repInfo, function(reply, status){
+              if (reply.ok)
+                if (cb) cb.call(context, reply, status)
+            })
+          }, this)
         }, this)
       }, this)
     }
@@ -923,16 +947,36 @@ var BrowserCouch = function(opts){
     self.syncFromRemote = function BC_syncFromRemote(source, cb, context){
       var self = this;
       var target = 'BrowserCouch:' + dbName;
-      var since = getRepInfo(source, target);
       var couch = new Couch({url: source});
-      couch.get('_changes', {include_docs: true, since: since}, function(changes){
-        var results = changes.results;
-        for (var i = 0; i < results.length; i++){
-          var res = results[i];
-          self.put(res.doc, {new_edits: false});
+      
+      var repInfoID = '_local/' + MD5(couch.baseUrl + ':' + location.host + ':' + dbName)
+      couch.get(repInfoID, null, function(repInfo, status){
+        if (!repInfo){
+          if (cb) cb.call(context, repInfo, status)
+          return
         }
-        setRepInfo(source, target, changes.last_seq)
-        if (cb) cb.call(context, changes)
+        if (repInfo.error){
+          repInfo = {
+            _id: repInfoID,
+            session_id: new UUID().createUUID(),
+            source_last_seq: 0
+          }
+        }
+        var since = repInfo.source_last_seq
+        couch.get('_changes', {include_docs: true, since: since}, function(changes, status){
+          if (!changes || changes.error){
+            if (cb) cb.call(context, changes, status)
+            return
+          }
+          var results = changes.results;
+          for (var i = 0; i < results.length; i++){
+            var res = results[i];
+            self.put(res.doc, {new_edits: false});
+          }
+          couch.put(repInfoID, repInfo, function(reply, status){
+            if (cb) cb.call(context, changes, status)
+          })
+        })
       })
     }
     

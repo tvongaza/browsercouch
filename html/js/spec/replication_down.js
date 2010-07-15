@@ -71,4 +71,29 @@ describe('BrowserCouch Replicate down', {async: true})
       })
     })
   })
+  .should('store replication info remotely', function(){
+    var self = this
+    self.db.syncFromRemote(self.couch.baseUrl, function(){
+      self.couch.drop(function(){
+        self.couch.create(function(){
+          self.couch.put('2', {name: 'Marty'}, function(){
+            self.db.syncFromRemote(self.couch.baseUrl, function(){
+              var doc = self.db.get('2')
+              self.expect(doc).notToBe(null)
+              self.expect(doc.name).toBe('Marty')
+              self.finish()
+            })
+          })
+        })
+      })
+    })
+  })
+  .should('gracefully handle network error', function(){
+    var self = this
+    self.db.syncFromRemote('http://some.address', function(reply, status){
+      self.expect(reply).toBe(null)
+      self.expect(status).toBe(0)
+      self.finish()
+    })
+  })
   
