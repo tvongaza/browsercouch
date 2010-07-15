@@ -47,6 +47,10 @@ describe('BrowserCouch conflict management(local)')
     expect(doc._conflicts).toBe(undefined)
     expect(doc._conflict_revisions).toBe(undefined)
   })
+  .should('get rid of _conflict_revisions field', function(){
+    var doc = this.db2.get('foo')
+    expect(doc._conflict_revisions).toBe(undefined)
+  })
   
   
   

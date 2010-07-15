@@ -24,6 +24,12 @@ describe('BrowserCouch conflict management(remote down)')
       }, this)
     }, this)
   })
+  .should('get changes', {async: true}, function(){
+    this.db.syncFromRemote(this.couch.baseUrl, function(changes){
+      this.expect(changes).notToBe(undefined)
+      this.finish()
+    }, this)
+  })
   .should('store conflicted versions to _conflicts if conflict', function(){
     var doc = this.db.get('foo')
     expect(doc._conflicts.length).toBe(1)
