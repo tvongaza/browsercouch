@@ -130,7 +130,6 @@ var BrowserCouch = function(opts){
           xhr.open(verb, url, true)
           xhr.send(data)
       }
-
   }
 
   window.Couch = Couch
@@ -904,12 +903,20 @@ var BrowserCouch = function(opts){
       storage.put(dbName, dbInfo)
     }
     
+    self.upRepInfoID = function(couchUrl){
+      return '_local/' + MD5(location.host + ':' + dbName + ':' + couchUrl)
+    }
+    
+    self.downRepInfoID = function(couchUrl){
+      return '_local/' + MD5(couchUrl + ':' + location.host + ':' + dbName)
+    }
+    
     self.syncToRemote = function BC_syncToRemote(target, cb, context){
       var source = 'BrowserCouch:' + dbName
       var couch = new Couch({url: target})
       //console.log('bulkDocs: ' + JSON.stringify(bulkDocs));
 
-      var repInfoID = '_local/' + MD5(location.host + ':' + dbName + ':' + couch.baseUrl)
+      var repInfoID = this.upRepInfoID(couch.baseUrl)
       couch.get(repInfoID, null, function(repInfo, status){
         if (!repInfo){
           if (cb) cb.call(context, repInfo, status)
@@ -935,6 +942,7 @@ var BrowserCouch = function(opts){
               if (cb) cb.call(context, reply, status)
               return
             }
+            repInfo.source_last_seq = self.lastSeq()
             couch.put(repInfoID, repInfo, function(reply, status){
               if (reply.ok)
                 if (cb) cb.call(context, reply, status)
@@ -949,7 +957,7 @@ var BrowserCouch = function(opts){
       var target = 'BrowserCouch:' + dbName;
       var couch = new Couch({url: source});
       
-      var repInfoID = '_local/' + MD5(couch.baseUrl + ':' + location.host + ':' + dbName)
+      var repInfoID = self.downRepInfoID(couch.baseUrl)
       couch.get(repInfoID, null, function(repInfo, status){
         if (!repInfo){
           if (cb) cb.call(context, repInfo, status)
@@ -973,6 +981,7 @@ var BrowserCouch = function(opts){
             var res = results[i];
             self.put(res.doc, {new_edits: false});
           }
+          repInfo.source_last_seq = changes.last_seq
           couch.put(repInfoID, repInfo, function(reply, status){
             if (cb) cb.call(context, changes, status)
           })

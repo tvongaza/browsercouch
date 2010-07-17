@@ -81,7 +81,17 @@ describe('BrowserCouch Replicate down', {async: true})
               var doc = self.db.get('2')
               self.expect(doc).notToBe(null)
               self.expect(doc.name).toBe('Marty')
-              self.finish()
+              self.couch.get(self.db.downRepInfoID(self.couch.baseUrl), null, function(repInfo){
+                self.expect(repInfo.source_last_seq).toBe(1)
+                self.couch.put('3', {name: 'Jan'}, function(){
+                  self.db.syncFromRemote(self.couch.baseUrl, function(){
+                    self.couch.get(self.db.downRepInfoID(self.couch.baseUrl), null, function(repInfo){
+                      self.expect(repInfo.source_last_seq).toBe(2)
+                      self.finish()
+                    })
+                  })
+                })
+              })
             })
           })
         })

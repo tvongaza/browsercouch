@@ -111,7 +111,16 @@ describe('BrowserCouch Replicate Up', {async: true})
             }, function(data){
               self.expect(data.total_rows).toBe(1)
               self.expect(data.rows[0].doc.name).toBe('John')
-              self.finish()
+              self.couch.get(self.db.upRepInfoID(self.couch.baseUrl), null, function(repInfo){
+                self.expect(repInfo.source_last_seq).toBe(1)
+                self.db.put({_id: '2', name: 'Bob'})
+                self.db.syncToRemote(self.couch.baseUrl, function(){
+                  self.couch.get(self.db.upRepInfoID(self.couch.baseUrl), null, function(repInfo){
+                    self.expect(repInfo.source_last_seq).toBe(2)
+                    self.finish()
+                  })
+                })
+              })
             })
           })
         })
