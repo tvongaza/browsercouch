@@ -553,8 +553,18 @@ var BrowserCouch = function(opts){
         seqPrefix = dbName + '__seq_',
         docPrefix = dbName + '_doc_',
         dbInfo = storage.get(dbName) || {lastSeq: 0, docCount: 0},
-        changeListeners = []
+        changeListeners = [],
+        browserID = initBrowserID()
     self.name = name;
+    
+    function initBrowserID(){
+        var browserID = storage.get('BC_BROWSER_ID')
+        if (!browserID){
+            browserID = new UUID().createUUID()
+            storage.put('BC_BROWSER_ID', browserID)
+        }
+        return browserID
+    }
       
     var seqs = function(cb){
       storage.keys(seqPrefix, cb);
@@ -904,11 +914,11 @@ var BrowserCouch = function(opts){
     }
     
     self.upRepInfoID = function(couchUrl){
-      return '_local/' + MD5(location.host + ':' + dbName + ':' + couchUrl)
+      return '_local/' + MD5(browserID + ':' + location.host + ':' + dbName + ':' + couchUrl)
     }
     
     self.downRepInfoID = function(couchUrl){
-      return '_local/' + MD5(couchUrl + ':' + location.host + ':' + dbName)
+      return '_local/' + MD5(couchUrl + ':' + browserID + ':' + location.host + ':' + dbName)
     }
     
     self.syncToRemote = function BC_syncToRemote(target, cb, context){
