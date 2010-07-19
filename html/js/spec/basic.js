@@ -27,11 +27,27 @@ describe('BrowserCouch Basic CRUD')
     this.db.put(emma)
     expect(emma._rev).notToBe(undefined)
   })
+  .should('give all docs', function(){
+    var doc = {_id: '1', name: 'Emma'}
+    this.db.put(doc)
+    var allDocs = this.db.allDocs()
+    expect(allDocs.total_rows).toBe(1)
+    expect(allDocs.rows.length).toBe(1)
+    expect(allDocs.rows[0].name).toBe('Emma')
+    doc.name = 'Jenna'
+    this.db.put(doc)
+    expect(allDocs.total_rows).toBe(1)
+    expect(allDocs.rows.length).toBe(1)
+    
+  })
   .should('delete', function(){
     var db = this.db
     db.put({_id: '1', name: 'Emma'})
+    
+    expect(db.allDocs().rows.length).toBe(1)
     var doc = db.get('1')
     db.del(doc)
     expect(db.docCount()).toBe(0)
     expect(db.get('1')).toBe(null)
+    expect(db.allDocs().rows.length).toBe(0)
   })

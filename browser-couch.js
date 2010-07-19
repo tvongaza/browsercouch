@@ -62,6 +62,12 @@ var BrowserCouch = function(opts){
           ret.push(key)
       return ret
   }
+  function values(obj){
+      var ret = []
+      for (var key in obj)
+          ret.push(obj[key])
+      return ret
+  }
 
   var Couch = function Couch(options){
       if (options.url)
@@ -589,6 +595,7 @@ var BrowserCouch = function(opts){
 
     self.get = function DB_get(id, options) {
       var docInfo = storage.get(docPrefix + id)
+      var doc
       if (docInfo){
         if (options && options.rev){
           if (docInfo._conflict_revisions){
@@ -596,7 +603,7 @@ var BrowserCouch = function(opts){
           }
         }else
           doc = docInfo.doc
-        if (doc._deleted) return null
+        if (!doc || doc._deleted) return null
         else return doc
       }else
         return null
@@ -757,6 +764,22 @@ var BrowserCouch = function(opts){
     self.docCount = function DB_docCount() {
       return dbInfo.docCount;
     };
+    
+    self.allDocs = function DB_allDocs(){
+      var docs = {}
+      for (var seq = self.lastSeq(); seq >= 1; seq--){
+        var id = storage.get(seqPrefix + seq)
+        if (id in docs) continue
+        var doc = self.get(id)
+        if (doc)
+          docs[id] = doc
+      }
+      var docs = values(docs)
+      return {
+        total_rows: docs.length,
+        rows: docs
+      }
+    }
     
     self.lastSeq = function BC_lastSeq(){
       return dbInfo.lastSeq;
@@ -941,6 +964,8 @@ var BrowserCouch = function(opts){
         }
         var since = repInfo.source_last_seq
         var changes = this.getChanges({since: since});
+        if (changes.length == 0)
+        return 
         var bulkDocs = this.createBulkDocs(changes);
         couch.post('_bulk_docs', bulkDocs, function(reply, status){
           if (!reply || reply.error){
