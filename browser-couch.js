@@ -572,26 +572,6 @@ var BrowserCouch = function(opts){
         return browserID
     }
       
-    var seqs = function(cb){
-      storage.keys(seqPrefix, cb);
-    }
-    
-    var removeBySeq = function(seq){
-      storage.get(seqPrefix + seq, function(seqInfo){
-        var docId = seqInfo.id
-        storage.remove(docPrefix + docId);
-        storage.remove(seqPrefix + seq);
-      });
-    }
-        
-    self.wipe = function DB_wipe(cb) {
-      seqs(function(sqs){
-        for (var seq in sqs){
-          removeBySeq(sqs[seq]);
-        }
-        cb();
-      });
-    };
 
     self.get = function DB_get(id, options) {
       var docInfo = storage.get(docPrefix + id)
@@ -779,6 +759,16 @@ var BrowserCouch = function(opts){
         total_rows: docs.length,
         rows: docs
       }
+    }
+    
+    self.wipe = function DB_wipe(cb) {
+      for (var seq = self.lastSeq(); seq >= 1; seq--){
+        var id = storage.get(seqPrefix + seq)
+        storage.remove(docPrefix + id)
+        storage.remove(seqPrefix + seq)
+      }
+      dbInfo = {lastSeq: 0, docCount: 0}
+      storage.put(dbName, dbInfo)
     }
     
     self.lastSeq = function BC_lastSeq(){
