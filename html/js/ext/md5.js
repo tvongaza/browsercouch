@@ -116,8 +116,6 @@ var MD5 = function (string) {
 	var S31=4, S32=11, S33=16, S34=23;
 	var S41=6, S42=10, S43=15, S44=21;
  
-	string = Utf8Encode(string);
- 
 	x = ConvertToWordArray(string);
  
 	a = 0x67452301; b = 0xEFCDAB89; c = 0x98BADCFE; d = 0x10325476;
