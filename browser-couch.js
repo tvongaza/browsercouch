@@ -612,6 +612,35 @@ var BrowserCouch = function(opts){
         function revHash(doc){
           return doc._rev.split('-')[1]
         }
+        function calculateRevId(doc){
+            var deleted = doc._deleted || false
+            var oldRev = doc._rev
+            var oldId = oldRev ? Number(oldRev.split('-')[0]) : 0
+            var oldHash = oldRev ? oldRev.split('-')[1] : 0
+            
+            var attrs2 = []
+            
+            var attrs = []
+            
+            for (var key in doc){
+                if (doc.hasOwnProperty(key)){
+                    if (key.charCodeAt(0) != 95){ // skip attrs that start w underscore
+                        var value = doc[key]
+                        if (typeof(value) == 'string')
+                            value = new BertBinary(value)
+                        attrs.push(new BertTuple([new BertBinary(key), value]))
+                        
+                    }
+                }
+            }
+            
+            var body = new BertTuple([attrs])
+            var term = [
+                deleted, oldId, oldHash, body, attrs2
+                ]
+            console.log(Bert.pp_term(term))
+            return MD5(Bert.encode(term))
+        }
         
         var docInfo = storage.get(docPrefix + obj._id) || {}
         var orig = docInfo.doc
@@ -626,7 +655,7 @@ var BrowserCouch = function(opts){
           if (!obj._rev){
             // We're using the naive random versioning, rather
             // than the md5 deterministic hash.
-            obj._rev = "1-" + newHash();
+            obj._rev = "1-" + calculateRevId(obj);
           }else{
             
             if (newEdits){
@@ -653,7 +682,7 @@ var BrowserCouch = function(opts){
                 obj._conflicts = orig._conflicts;
               }
               
-              obj._rev = (revIndex(obj)+1) + '-' + newHash();
+              obj._rev = (revIndex(obj)+1) + '-' + calculateRevId(obj);
             }else if (orig && obj._rev != orig._rev){
               var winner;
               // use deterministic winner picking algorithm
