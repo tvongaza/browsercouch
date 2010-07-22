@@ -682,7 +682,12 @@ var BrowserCouch = function(opts){
                 obj._conflicts = orig._conflicts;
               }
               
-              obj._rev = (revIndex(obj)+1) + '-' + calculateRevId(obj);
+              var revId = calculateRevId(obj);
+              if (revHash(obj) == revId){
+                // no change, skip
+                return
+              }
+              obj._rev = (revIndex(obj)+1) + '-' + revId;
             }else if (orig && obj._rev != orig._rev){
               var winner;
               // use deterministic winner picking algorithm

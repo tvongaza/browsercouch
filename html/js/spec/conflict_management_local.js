@@ -51,6 +51,7 @@ describe('BrowserCouch conflict management(local)')
     var doc = this.db2.get('foo')
     expect(doc._conflict_revisions).toBe(undefined)
   })
+  /*
   .should('be able to save on top of conflicted doc and then resolve', function(){
     var doc = this.db2.get('foo')
     doc.count = 4
@@ -61,6 +62,7 @@ describe('BrowserCouch conflict management(local)')
     }, this)
     expect(doc._conflicts).toBe(undefined)
   })
+  */
   
   
   
