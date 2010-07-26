@@ -1117,7 +1117,7 @@ var BrowserCouch = function(opts){
         if (!id) continue
         var doc = storage.get(docPrefix + id)
         if (doc){
-          ret.allDocs.push('Doc ' + id + ', Seq ' + seq + ': ' + JSON.stringify(doc))
+          ret.allDocs.push(doc)
           if (!doc.doc._deleted)
             total++
           else
