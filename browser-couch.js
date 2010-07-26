@@ -1106,9 +1106,10 @@ var BrowserCouch = function(opts){
     }
     
     self.diagnostics = function BC_diagnostics(){
-      ret = ['BrowserCouch:' + dbName]
-      ret.push('DB Info: ' + JSON.stringify(dbInfo))
-      
+      var ret = {}
+      ret.dbName = name
+      ret.dbInfo = dbInfo
+      ret.allDocs = []
       var total = 0, totalDeleted = 0
       
       for (var seq = this.lastSeq(); seq >= 1; seq--){
@@ -1116,7 +1117,7 @@ var BrowserCouch = function(opts){
         if (!id) continue
         var doc = storage.get(docPrefix + id)
         if (doc){
-          ret.push('Doc ' + id + ', Seq ' + seq + ': ' + JSON.stringify(doc))
+          ret.allDocs.push('Doc ' + id + ', Seq ' + seq + ': ' + JSON.stringify(doc))
           if (!doc.doc._deleted)
             total++
           else
@@ -1124,10 +1125,9 @@ var BrowserCouch = function(opts){
         }
       }
       
-      ret.push('Total Docs: ' + total)
-      ret.push('Deleted docs: ' + totalDeleted)
-      
-      return ret.join('\n')
+      ret.totalDocs = total
+      ret.deletedDocs = totalDeleted
+      return ret
     }
     
     return self;
