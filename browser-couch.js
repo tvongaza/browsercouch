@@ -1105,6 +1105,31 @@ var BrowserCouch = function(opts){
         throw new Error('Invalid protocol: ' + source);
     }
     
+    self.diagnostics = function BC_diagnostics(){
+      ret = ['BrowserCouch:' + dbName]
+      ret.push('DB Info: ' + JSON.stringify(dbInfo))
+      
+      var total = 0, totalDeleted = 0
+      
+      for (var seq = this.lastSeq(); seq >= 1; seq--){
+        var id = storage.get(seqPrefix + seq)
+        if (!id) continue
+        var doc = storage.get(docPrefix + id)
+        if (doc){
+          ret.push('Doc ' + id + ', Seq ' + seq + ': ' + JSON.stringify(doc))
+          if (doc.doc._deleted)
+            total++
+          else
+            totalDeleted++
+        }
+      }
+      
+      ret.push('Total Docs: ' + total)
+      ret.push('Deleted docs: ' + totalDeleted)
+      
+      return ret.join('\n')
+    }
+    
     return self;
   
   }
