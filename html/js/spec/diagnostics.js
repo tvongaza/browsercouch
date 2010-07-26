@@ -22,8 +22,8 @@ Doc 6, Seq 7: {"doc":{"_id":"6","_rev":"2-7a0aceae9aeccb396a1ed8409db07381","_de
 Doc 4, Seq 4: {"doc":{"_id":"4","name":"scott","_rev":"1-ef9310b7364ea033b2517ebd3aca4c29"},"seq":4}\n\
 Doc 3, Seq 3: {"doc":{"_id":"3","name":"kelly","_rev":"1-2015481ae3c7095f9aabed5cb51fa801"},"seq":3}\n\
 Doc 1, Seq 1: {"doc":{"_id":"1","name":"tom","_rev":"1-78ba10acd4d7d76dde0b0a677519136f"},"seq":1}\n\
-Total Docs: 2\n\
-Deleted docs: 4'
+Total Docs: 4\n\
+Deleted docs: 2'
             
             )
     })
