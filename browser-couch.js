@@ -711,7 +711,7 @@ var BrowserCouch = function(opts){
               docInfo._conflict_revisions[loser._rev] = loser
             }
           }
-          if (!orig){
+          if (!orig && !obj._deleted){
             dbInfo.docCount = self.docCount() + 1;
             storage.put(dbName, dbInfo)
           }

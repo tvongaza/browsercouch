@@ -28,24 +28,41 @@ describe('BrowserCouch Replicate down', {async: true})
           self.db.syncFromRemote(self.couch.baseUrl, function(){
             var emily = self.db.get('1')
             self.expect(emily.name).toBe('Emily')
+            self.expect(self.db.docCount()).toBe(1)
+            self.expect(self.db.lastSeq()).toBe(2)
+            
             self.finish()
           })
         })
       })
     })
   })
+
   .should('replicate delete', function(){
     var self = this
     self.db.syncFromRemote(self.couch.baseUrl, function(){
       self.couch.get('1', null, function(doc){
-        doc.name = 'Emily'
         self.couch.del(doc, function(){
           self.db.syncFromRemote(self.couch.baseUrl, function(){
             var doc = self.db.get('1')
             self.expect(doc).toBe(null)
             self.expect(self.db.docCount()).toBe(0)
+            self.expect(self.db.lastSeq()).toBe(2)
             self.finish()
           })
+        })
+      })
+    })
+  })
+  .should('replicate delete correctly if never seen', function(){
+    var self = this
+    self.couch.get('1', null, function(doc){
+      self.couch.del(doc, function(){
+        self.db.syncFromRemote(self.couch.baseUrl, function(){
+          var doc = self.db.get('1')
+          self.expect(doc).toBe(null)
+          self.expect(self.db.docCount()).toBe(0)
+          self.finish()
         })
       })
     })
