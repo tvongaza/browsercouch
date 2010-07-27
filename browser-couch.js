@@ -638,7 +638,7 @@ var BrowserCouch = function(opts){
             var term = [
                 deleted, oldId, oldHash, body, attrs2
                 ]
-            console.log(Bert.pp_term(term))
+            //console.log(Bert.pp_term(term))
             return MD5(Bert.encode(term))
         }
         
@@ -988,8 +988,9 @@ var BrowserCouch = function(opts){
         }
         var since = repInfo.source_last_seq
         var changes = this.getChanges({since: since});
-        if (changes.length == 0)
-        return 
+        if (changes.results.length == 0){
+          if (cb) cb.call(context, repInfo, status)
+        }
         var bulkDocs = this.createBulkDocs(changes);
         couch.post('_bulk_docs', bulkDocs, function(reply, status){
           if (!reply || reply.error){

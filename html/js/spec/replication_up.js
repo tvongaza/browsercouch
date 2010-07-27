@@ -136,3 +136,11 @@ describe('BrowserCouch Replicate Up', {async: true})
       self.finish()
     })
   })
+  
+  .should('stop gracefully if no changes need to be replicated', function(){
+    var self = this
+    self.db.syncToRemote(self.couch.baseUrl, function(reply, status){
+      self.expect(reply.source_last_seq).toBe(0)
+      self.finish()
+    })
+  })
