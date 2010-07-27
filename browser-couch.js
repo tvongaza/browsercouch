@@ -990,6 +990,7 @@ var BrowserCouch = function(opts){
         var changes = this.getChanges({since: since});
         if (changes.results.length == 0){
           if (cb) cb.call(context, repInfo, status)
+          return
         }
         var bulkDocs = this.createBulkDocs(changes);
         couch.post('_bulk_docs', bulkDocs, function(reply, status){
