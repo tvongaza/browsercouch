@@ -626,6 +626,7 @@ var BrowserCouch = function(opts){
                 if (doc.hasOwnProperty(key)){
                     if (key.charCodeAt(0) != 95){ // skip attrs that start w underscore
                         var value = doc[key]
+                        if (value === undefined) continue
                         if (typeof(value) == 'string')
                             value = new BertBinary(value)
                         attrs.push(new BertTuple([new BertBinary(key), value]))

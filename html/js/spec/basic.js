@@ -60,3 +60,7 @@ describe('BrowserCouch Basic CRUD')
     expect(BrowserCouch('basic').lastSeq()).toBe(0)
     expect(BrowserCouch('basic').docCount()).toBe(0)
   })
+  .should('ignore undefined key/values', function(){
+    this.db.put({_id: '1', name: 'Emma', age: undefined})
+    expect('age' in this.db.get('1')).toBe(false)
+  })
