@@ -643,6 +643,9 @@ var BrowserCouch = function(opts){
             return MD5(Bert.encode(term))
         }
         
+        if (!obj._id)
+          throw new Error("Cannot put w/o ID.")
+        
         var docInfo = storage.get(docPrefix + obj._id) || {}
         var orig = docInfo.doc
         if (newEdits && orig && orig._rev != obj._rev && (

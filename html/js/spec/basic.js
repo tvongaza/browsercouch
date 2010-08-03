@@ -64,3 +64,10 @@ describe('BrowserCouch Basic CRUD')
     this.db.put({_id: '1', name: 'Emma', age: undefined})
     expect('age' in this.db.get('1')).toBe(false)
   })
+  .should('not be able to put an obj w/o id', function(){
+    var obj = {name: 'Emma'}
+    var self = this
+    expect(function(){
+      self.db.put(obj)
+    }).toRaise("Cannot put w/o ID.")
+  })
