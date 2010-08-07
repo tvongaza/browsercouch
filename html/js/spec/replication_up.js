@@ -1,13 +1,16 @@
 describe('BrowserCouch Replicate Up', {async: true})
   .before(function(){
-    localStorage.clear();
-    this.db = BrowserCouch("rep", {storage: new BrowserCouch.LocalStorage()});
+    this.db = BrowserCouch("rep");
     this.couch = new Couch({name: 'rep'})
     this.couch.drop(function(){
       this.couch.create(function(){
         this.finish()
       }, this)
     }, this)
+  })
+  .after(function(){
+    this.db.wipe()
+    this.finish()
   })
   .should('replicate create', function(){
     var self = this
@@ -132,7 +135,6 @@ describe('BrowserCouch Replicate Up', {async: true})
     self.db.put({_id: '1', name: 'John'})
     self.db.syncToRemote('http://some.address', function(reply, status){
       self.expect(reply).toBe(null)
-      self.expect(status).toBe(0)
       self.finish()
     })
   })

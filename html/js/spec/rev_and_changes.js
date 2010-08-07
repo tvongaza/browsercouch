@@ -1,8 +1,9 @@
 describe('BrowserCouch Rev and Changes')
   .before(function(){
-    localStorage.clear();
-    this.db = BrowserCouch("revchanges", {storage: new BrowserCouch.LocalStorage()});
-    this.finish();
+    this.db = BrowserCouch("revchanges");
+  })
+  .after(function(){
+    this.db.wipe()
   })
   .it('should calc rev', function(){
     var self = this
@@ -25,7 +26,7 @@ describe('BrowserCouch Rev and Changes')
     db.put({_id: '1', name: 'Bob'})
     expect(function(){
       db.put({_id: '1', name: 'Bill'})
-    }).toRaise('Document update conflict.')
+    }).toRaise('Document update conflict for ID 1, revs (undefined, 1-5a26fa4b20e40bc9e2d3e47b168be460).')
   })
   .should('give changes', function(){
     var db = this.db

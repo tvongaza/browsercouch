@@ -1,7 +1,9 @@
 describe('BrowserCouch Basic CRUD')
   .before(function(){
-    localStorage.clear();
-    this.db = BrowserCouch("basic", {storage: new BrowserCouch.LocalStorage()});
+    this.db = BrowserCouch("basic");
+  })
+  .after(function(){
+    this.db.wipe()
   })
   .should('remember what I put', function(){
     this.db.put({_id: '1', name: 'Emma'})
@@ -71,3 +73,4 @@ describe('BrowserCouch Basic CRUD')
       self.db.put(obj)
     }).toRaise("Cannot put w/o ID.")
   })
+  

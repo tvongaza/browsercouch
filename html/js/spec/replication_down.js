@@ -119,7 +119,6 @@ describe('BrowserCouch Replicate down', {async: true})
     var self = this
     self.db.syncFromRemote('http://some.address', function(reply, status){
       self.expect(reply).toBe(null)
-      self.expect(status).toBe(0)
       self.finish()
     })
   })

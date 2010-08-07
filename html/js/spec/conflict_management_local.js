@@ -1,6 +1,5 @@
 describe('BrowserCouch conflict management(local)')
   .before(function(){
-    localStorage.clear()
     this.db1 = BrowserCouch('db1')
     this.db1.put({_id: 'foo', count: 1})
     this.db2 = BrowserCouch('db2')
@@ -14,6 +13,10 @@ describe('BrowserCouch conflict management(local)')
     doc2.count = 3
     this.db2.put(doc2)
     this.db1.syncToLocal(this.db2)
+  })
+  .after(function(){
+    this.db1.wipe()
+    this.db2.wipe()
   })
   .should('store conflicted versions to _conflicts if conflict', function(){
     doc2 = this.db2.get('foo')

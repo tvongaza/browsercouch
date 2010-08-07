@@ -133,8 +133,12 @@ var BrowserCouch = function(opts){
           xhr.onreadystatechange = callback ? _callback : null
           var url = this.baseUrl + uri
           //console.log(verb + ': ' + url)
-          xhr.open(verb, url, true)
-          xhr.send(data)
+          try{
+            xhr.open(verb, url, true)
+            xhr.send(data)
+          }catch(e){
+            callback.call(context, null, null)
+          }
       }
   }
 
@@ -504,10 +508,8 @@ var BrowserCouch = function(opts){
     
     if (window.localStorage)
       storage = window.localStorage;
-    else if (window.globalStorage)
-      storage = window.globalStorage[location.hostname];
     else {
-        throw new Error("globalStorage/localStorage not available.");
+      throw new Error("globalStorage/localStorage not available.");
     }
   
       
@@ -539,9 +541,68 @@ var BrowserCouch = function(opts){
     
   }
   
-  bc.LocalStorage.isAvailable = (this.location &&
-                              this.location.protocol != "file:" &&
-                              (this.globalStorage || this.localStorage));
+  bc.GlobalStorage = function GlobalStorage() {
+    
+    var storage
+    if (window.globalStorage){
+      storage = window.globalStorage[location.hostname];
+    }else
+      throw new Error("globalStorage/localStorage not available.");
+      
+    this.get = function LS_get(name) {
+      if (name in storage && storage[name])
+        return JSON.parse(storage[name].value)
+      else
+        return null;
+    };
+  
+    this.put = function LS_put(name, obj) {
+      storage[name] = JSON.stringify(obj);
+    };
+    
+    this.remove = function(name){
+      delete storage[name];
+    }
+    
+    this.keys = function(prefix){
+      var out = [];
+      for (var i = 0; i < storage.length; i++){
+        var key = storage.key(i);
+        if (key.slice(0, prefix.length)===prefix){ 
+          out.push(key.slice(prefix.length, key.length));
+        }
+      }
+      return out;
+    }
+    
+  }
+  
+  bc.StorageCache = function StorageCache(storage){
+    var cache = {}
+    this.get = function(name){
+      if (name in cache)
+        return cache[name]
+      else{
+        var ret = cache[name] = storage.get(name)
+        return ret
+      }
+    }
+    
+    this.put = function(name, obj){
+      storage.put(name, obj)
+      if (name in cache)
+        cache[name] = storage.get(name)
+    }
+    
+    this.remove = function(name){
+      delete cache[name]
+      storage.remove(name)
+    }
+    
+    this.keys = function(prefix){
+      return storage.keys(prefix)
+    }
+  }
   
 
   // == Database Wrapper Interface == 
@@ -653,7 +714,7 @@ var BrowserCouch = function(opts){
           )){
           //console.log('original: ' + JSON.stringify(orig));
           //console.log('new: ' + JSON.stringify(obj));
-          throw new Error('Document update conflict.');
+          throw new Error('Document update conflict for ID ' + obj._id + ', revs (' + obj._rev + ', ' + orig._rev + ').');
         }else{
           //= Update Rev =
           if (!obj._rev){
@@ -1163,9 +1224,15 @@ var BrowserCouch = function(opts){
   //
   var cons = function(name, options){
     var options = options || {};
+    var storage = options.storage
+    if (!storage){
+      if (window.localStorage) storage = new bc.StorageCache(new bc.LocalStorage())
+      else if (window.globalStorage) storage = new bc.StorageCache(new bc.GlobalStorage())
+      else throw new Error("No storage mechanism available.")
+    }
     // Create a database wrapper.
     return bc.BrowserDatabase(name,
-      options.storage || new bc.LocalStorage(), // TODO - check local storage is available
+      storage, // TODO - check local storage is available
       options);
   }
   cons.__proto__ = bc;
