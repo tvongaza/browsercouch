@@ -51,11 +51,20 @@ describe('BrowserCouch Replicate Up', {async: true})
         }, function(data){
           self.expect(data.total_rows).toBe(1)
           self.expect(data.rows[0].doc.name).toBe('Emily')
-          self.finish()
+          self.couch.post('_temp_view', {
+            map: function(doc){
+              if (doc._conflicts)
+                emit(null, doc)
+            }.toString()
+          }, function(results){
+            self.expect(results.total_rows).toBe(0)
+            self.finish()
+          })
         })
       })
     })
   })
+  
   .should('replicate delete', function(){
     var self = this
     self.db.put({_id: '1', name: 'John'})
@@ -146,3 +155,4 @@ describe('BrowserCouch Replicate Up', {async: true})
       self.finish()
     })
   })
+  

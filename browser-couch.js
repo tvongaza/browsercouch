@@ -1028,28 +1028,9 @@ var BrowserCouch = function(opts){
         var id = res.id;
         var rev = res.changes[0].rev
         var revParts = rev.split('-')
-        var doc;
-        if (!res.deleted){
-          doc = shallowCopy(self.get(id))
-          doc._revisions = {
-            start: parseInt(revParts[0]),
-            ids: [revParts[1]]
-          }
-        }else{
-          var docId = storage.get(seqPrefix + res.seq);
-          var ddocInfo = storage.get(docPrefix + docId);
-          var ddoc = ddocInfo.doc
-          var revWhenDeleted = ddocInfo._revWhenDeleted;
-          doc = {
-            _id: id,
-            _rev: rev,
-            _deleted: true
-          }
-          doc._revisions = {
-            start: parseInt(revParts[0]),
-            ids: [revParts[1], revWhenDeleted.split('-')[1]]
-          }
-        }
+        var docInfo = storage.get(docPrefix + id)
+        var doc = shallowCopy(docInfo.doc)
+        doc._revisions = docInfo.revisions
         docs.push(doc);
       }
       return ret
