@@ -30,7 +30,7 @@ describe('BrowserCouch Replicate down', {async: true})
             self.expect(emily.name).toBe('Emily')
             self.expect(self.db.docCount()).toBe(1)
             self.expect(self.db.lastSeq()).toBe(2)
-            
+            self.expect(emily._conflicts).toBe(undefined)
             self.finish()
           })
         })

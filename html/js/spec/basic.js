@@ -73,4 +73,3 @@ describe('BrowserCouch Basic CRUD')
       self.db.put(obj)
     }).toRaise("Cannot put w/o ID.")
   })
-  

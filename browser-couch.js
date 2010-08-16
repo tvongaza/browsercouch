@@ -102,9 +102,17 @@ var BrowserCouch = function(opts){
       create: function(callback, context){
           this.request('PUT', '', null, callback, context)
       },
+      encodeValue: function(value){
+          if (value && value.constructor === Array || value.constructor === Object)
+            return encodeURI(JSON.stringify(value))
+          else return encodeURI(value)
+      },
       qs: function(params){
+          var encodeValue = this.encodeValue
           if (!params) return ''
-              return '?' + keys(params).map(function(key){return key + '=' + encodeURI(params[key])}).join('&')
+              return '?' + keys(params).map(function(key){
+                return key + '=' + encodeValue(params[key])
+              }).join('&')
       },
       expandViewPath: function expandViewPath(viewPath, params){
         var parts = viewPath.split('/')
@@ -633,17 +641,33 @@ var BrowserCouch = function(opts){
         return browserID
     }
       
+    
+    function shallowCopy(obj){
+      var ret = {}
+      for (var key in obj){
+        if (obj.hasOwnProperty(key))
+          ret[key] = obj[key]
+      }
+      return ret
+    }
 
     self.get = function DB_get(id, options) {
+      options = options || {}
       var docInfo = storage.get(docPrefix + id)
       var doc
       if (docInfo){
-        if (options && options.rev){
+        if (options.rev){
           if (docInfo._conflict_revisions){
             doc = docInfo._conflict_revisions[options.rev]
           }
-        }else
-          doc = docInfo.doc
+        }else{
+          if (options.revs === true){
+            doc = shallowCopy(docInfo.doc)
+            doc._revisions = docInfo.revisions
+          }else
+            doc = docInfo.doc
+        }
+          
         if (!doc || doc._deleted) return null
         else return doc
       }else
@@ -754,26 +778,38 @@ var BrowserCouch = function(opts){
               }
               obj._rev = (revIndex(obj)+1) + '-' + revId;
             }else if (orig && obj._rev != orig._rev){
-              var winner;
-              // use deterministic winner picking algorithm
-              if (revIndex(obj) > revIndex(orig))
-                winner = obj
-              else if (revIndex(orig) > revIndex(obj))
-                winner = orig
-              else if (revHash(obj) > revHash(orig))
-                winner = obj
-              else
-                winner = orig
-                
-              var loser = obj === winner ? orig : obj;
-              obj = winner
+              function hasMatchingRev(rev, revisions){
+                for (var i = 0; i < revisions.ids.length; i++){
+                  if (rev == (revisions.start - i) + '-' + revisions.ids[i])
+                    return true
+                }
+                return false
+              }
               
-              if (!obj._conflicts)
-                obj._conflicts = []
-              obj._conflicts.push(loser._rev)
-              if (!docInfo._conflict_revisions)
-                docInfo._conflict_revisions = {}
-              docInfo._conflict_revisions[loser._rev] = loser
+              var revisions = obj._revisions
+              if (!revisions || !hasMatchingRev(orig._rev, revisions)){
+              
+                var winner;
+                // use deterministic winner picking algorithm
+                if (revIndex(obj) > revIndex(orig))
+                  winner = obj
+                else if (revIndex(orig) > revIndex(obj))
+                  winner = orig
+                else if (revHash(obj) > revHash(orig))
+                  winner = obj
+                else
+                  winner = orig
+                
+                var loser = obj === winner ? orig : obj;
+                obj = winner
+              
+                if (!obj._conflicts)
+                  obj._conflicts = []
+                obj._conflicts.push(loser._rev)
+                if (!docInfo._conflict_revisions)
+                  docInfo._conflict_revisions = {}
+                docInfo._conflict_revisions[loser._rev] = loser
+              }
             }
           }
           if (!orig && !obj._deleted){
@@ -788,6 +824,11 @@ var BrowserCouch = function(opts){
           }
           
           docInfo.doc = obj
+          
+          if (!docInfo.revisions)
+            docInfo.revisions = {ids: []}
+          docInfo.revisions.start = revIndex(obj)
+          docInfo.revisions.ids.splice(0, 0, revHash(obj))
           
           if ('seq' in docInfo)
             storage.remove(seqPrefix + docInfo.seq)
@@ -989,7 +1030,7 @@ var BrowserCouch = function(opts){
         var revParts = rev.split('-')
         var doc;
         if (!res.deleted){
-          doc = self.get(id)
+          doc = shallowCopy(self.get(id))
           doc._revisions = {
             start: parseInt(revParts[0]),
             ids: [revParts[1]]
@@ -1040,7 +1081,7 @@ var BrowserCouch = function(opts){
 
       var repInfoID = this.upRepInfoID(couch.baseUrl)
       couch.get(repInfoID, null, function(repInfo, status){
-        if (!repInfo){
+        if (!status){
           if (cb) cb.call(context, repInfo, status)
           return
         }
@@ -1064,12 +1105,14 @@ var BrowserCouch = function(opts){
             return
           }
           couch.post('_ensure_full_commit', 'true', function(reply, status){
+            //console.log('_ensure_full_commit: ' + status)
             if (!reply || reply.error){
               if (cb) cb.call(context, reply, status)
               return
             }
             repInfo.source_last_seq = self.lastSeq()
             couch.put(repInfoID, repInfo, function(reply, status){
+              //console.log(repInfoID + ': ' + status)
               if (reply.ok)
                 if (cb) cb.call(context, reply, status)
             })
@@ -1084,6 +1127,14 @@ var BrowserCouch = function(opts){
       var couch = new Couch({url: source});
       
       var repInfoID = self.downRepInfoID(couch.baseUrl)
+      
+      function finish(repInfo, changes){
+            repInfo.source_last_seq = changes.last_seq
+            couch.put(repInfoID, repInfo, function(reply, status){
+              if (cb) cb.call(context, changes, status)
+            })
+        }
+      
       couch.get(repInfoID, null, function(repInfo, status){
         if (!repInfo){
           if (cb) cb.call(context, repInfo, status)
@@ -1102,15 +1153,27 @@ var BrowserCouch = function(opts){
             if (cb) cb.call(context, changes, status)
             return
           }
-          var results = changes.results;
-          for (var i = 0; i < results.length; i++){
-            var res = results[i];
-            self.put(res.doc, {new_edits: false});
+          
+          var queue = changes.results.slice(0);
+          function pullNext(){
+            if (queue.length == 0){
+              finish(repInfo, changes)
+              return
+            }
+            var next = queue.shift()
+            var open_revs
+            couch.get(next.id, {
+              open_revs: next.changes.map(function(c){return c.rev}),
+              revs: true,
+              latest: true
+            }, function(results, status){
+              var doc = results[0].ok
+              if (doc)
+                self.put(doc, {new_edits: false})
+              pullNext()
+            })
           }
-          repInfo.source_last_seq = changes.last_seq
-          couch.put(repInfoID, repInfo, function(reply, status){
-            if (cb) cb.call(context, changes, status)
-          })
+          pullNext()
         })
       })
     }
@@ -1135,7 +1198,7 @@ var BrowserCouch = function(opts){
           var ddoc = ddocInfo.doc
           targetDb.put(ddoc, {new_edits: false});
         }else{
-          var doc = this.get(res.id);
+          var doc = this.get(res.id, {revs: true});
           targetDb.put(doc, {new_edits: false});
         }
       }
