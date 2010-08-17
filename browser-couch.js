@@ -666,8 +666,11 @@ var BrowserCouch = function(opts){
           }
         }else{
           doc = shallowCopy(docInfo.doc)
-          doc._conflicts = docInfo._conflicts
-          if (options.revs === true){
+          if (docInfo._conflict_revisions){
+            var confs = keys(docInfo._conflict_revisions)
+            if (confs.length > 0)
+              doc._conflicts = confs
+          }if (options.revs === true){
             doc._revisions = docInfo.revisions
           }
         }
@@ -738,7 +741,7 @@ var BrowserCouch = function(opts){
         var docInfo = storage.get(docPrefix + obj._id) || {}
         var orig = docInfo.doc
         if (newEdits && orig && orig._rev != obj._rev && (
-            !docInfo._conflicts || docInfo._conflicts.indexOf(obj._rev) == -1
+            !docInfo._conflict_revisions || !(obj._rev in docInfo._conflict_revisions)
           )){
           //console.log('original: ' + JSON.stringify(orig));
           //console.log('new: ' + JSON.stringify(obj));
@@ -757,7 +760,6 @@ var BrowserCouch = function(opts){
                 if (obj._deleted){
                   // if deleting a conflict revision, we delete only that revision
                   delete docInfo._conflict_revisions[obj._rev];
-                  docInfo._conflicts = keys(docInfo._conflict_revisions);
                   // promote original back as current doc
                   obj = orig;
                 }else{
@@ -765,12 +767,8 @@ var BrowserCouch = function(opts){
                   var confDoc = conflictRevisions[obj._rev];
                   delete conflictRevisions[obj._rev];
                   conflictRevisions[orig._rev] = orig;
-                  docInfo._conflicts = keys(conflictRevisions);
                 }
               }
-              
-              if (docInfo._conflicts && docInfo._conflicts.length == 0)
-                delete docInfo._conflicts
               
               var revId = calculateRevId(obj);
               if (revHash(obj) == revId){
@@ -804,9 +802,6 @@ var BrowserCouch = function(opts){
                 var loser = obj === winner ? orig : obj;
                 obj = winner
               
-                if (!docInfo._conflicts)
-                  docInfo._conflicts = []
-                docInfo._conflicts.push(loser._rev)
                 if (!docInfo._conflict_revisions)
                   docInfo._conflict_revisions = {}
                 docInfo._conflict_revisions[loser._rev] = loser
