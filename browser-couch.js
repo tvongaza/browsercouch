@@ -523,7 +523,11 @@ var BrowserCouch = function(opts){
       
     this.get = function LS_get(name) {
       if (name in storage && storage[name])
-        return JSON.parse(storage[name])
+        try{
+          return JSON.parse(storage[name])
+        }catch(e){
+          throw new Error("Error trying to parse JSON: " + storage[name] + " at " + name)
+        }
       else
         return null;
     };
@@ -661,11 +665,11 @@ var BrowserCouch = function(opts){
             doc = docInfo._conflict_revisions[options.rev]
           }
         }else{
+          doc = shallowCopy(docInfo.doc)
+          doc._conflicts = docInfo._conflicts
           if (options.revs === true){
-            doc = shallowCopy(docInfo.doc)
             doc._revisions = docInfo.revisions
-          }else
-            doc = docInfo.doc
+          }
         }
           
         if (!doc || doc._deleted) return null
@@ -734,7 +738,7 @@ var BrowserCouch = function(opts){
         var docInfo = storage.get(docPrefix + obj._id) || {}
         var orig = docInfo.doc
         if (newEdits && orig && orig._rev != obj._rev && (
-            !orig._conflicts || orig._conflicts.indexOf(obj._rev) == -1
+            !docInfo._conflicts || docInfo._conflicts.indexOf(obj._rev) == -1
           )){
           //console.log('original: ' + JSON.stringify(orig));
           //console.log('new: ' + JSON.stringify(obj));
@@ -753,23 +757,20 @@ var BrowserCouch = function(opts){
                 if (obj._deleted){
                   // if deleting a conflict revision, we delete only that revision
                   delete docInfo._conflict_revisions[obj._rev];
-                  orig._conflicts = keys(docInfo._conflict_revisions);
-                  if (orig._conflicts.length == 0){
-                    delete orig._conflicts;
-                  }
+                  docInfo._conflicts = keys(docInfo._conflict_revisions);
                   // promote original back as current doc
                   obj = orig;
                 }else{
                   var conflictRevisions = docInfo._conflict_revisions;
                   var confDoc = conflictRevisions[obj._rev];
                   delete conflictRevisions[obj._rev];
-                  delete orig._conflicts;
                   conflictRevisions[orig._rev] = orig;
-                  obj._conflicts = keys(conflictRevisions);
+                  docInfo._conflicts = keys(conflictRevisions);
                 }
-              }else{
-                obj._conflicts = orig._conflicts;
               }
+              
+              if (docInfo._conflicts && docInfo._conflicts.length == 0)
+                delete docInfo._conflicts
               
               var revId = calculateRevId(obj);
               if (revHash(obj) == revId){
@@ -803,9 +804,9 @@ var BrowserCouch = function(opts){
                 var loser = obj === winner ? orig : obj;
                 obj = winner
               
-                if (!obj._conflicts)
-                  obj._conflicts = []
-                obj._conflicts.push(loser._rev)
+                if (!docInfo._conflicts)
+                  docInfo._conflicts = []
+                docInfo._conflicts.push(loser._rev)
                 if (!docInfo._conflict_revisions)
                   docInfo._conflict_revisions = {}
                 docInfo._conflict_revisions[loser._rev] = loser
@@ -823,12 +824,20 @@ var BrowserCouch = function(opts){
             storage.put(dbName, dbInfo)
           }
           
-          docInfo.doc = obj
+          var doc = shallowCopy(obj)
+          // filter out special attributes
+          for (var key in doc){
+            if (key == '_conflicts' || key == '_revisions')
+              delete doc[key]
+          }
+          docInfo.doc = doc
           
           if (!docInfo.revisions)
             docInfo.revisions = {ids: []}
           docInfo.revisions.start = revIndex(obj)
-          docInfo.revisions.ids.splice(0, 0, revHash(obj))
+          var rh = revHash(obj)
+          if (docInfo.revisions.ids.indexOf(rh) == -1)
+            docInfo.revisions.ids.splice(0, 0, rh)
           
           if ('seq' in docInfo)
             storage.remove(seqPrefix + docInfo.seq)

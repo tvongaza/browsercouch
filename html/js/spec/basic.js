@@ -66,6 +66,12 @@ describe('BrowserCouch Basic CRUD')
     this.db.put({_id: '1', name: 'Emma', age: undefined})
     expect('age' in this.db.get('1')).toBe(false)
   })
+  .should('ignore special attributes', function(){
+    this.db.put({_id: '1', name: 'Emma', _revisions:{start: 1}, _conflicts: ['blah']})
+    var emma = this.db.get('1')
+    expect(emma._conflicts).toBe(undefined)
+    expect(emma._revisions).toBe(undefined)
+  })
   .should('not be able to put an obj w/o id', function(){
     var obj = {name: 'Emma'}
     var self = this
