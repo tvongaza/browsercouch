@@ -134,6 +134,7 @@ var BrowserCouch = function(opts){
                   callback.call(context, result, this.status)
               }else if(this.readyState == 1){
                   this.setRequestHeader('Accept', 'application/json')
+                  this.setRequestHeader('Content-Type', 'application/json')
               }
           }
 
