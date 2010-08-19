@@ -634,7 +634,8 @@ var BrowserCouch = function(opts){
         docPrefix = dbName + '_doc_',
         dbInfo = storage.get(dbName) || {lastSeq: 0, docCount: 0},
         changeListeners = [],
-        browserID = initBrowserID()
+        browserID = initBrowserID(),
+        isRemoteSyncing = false
     self.name = name;
     
     function initBrowserID(){
@@ -1060,7 +1061,17 @@ var BrowserCouch = function(opts){
       return '_local/' + MD5(couchUrl + ':' + browserID + ':' + location.host + ':' + dbName)
     }
     
+    function initRemoteSync(){
+      if (isRemoteSyncing) throw Error('Tried to sync remotely while another sync is in progress.')
+      isRemoteSyncing = true
+    }
+    
+    function endRemoteSync(){
+      isRemoteSyncing = false
+    }
+    
     self.syncToRemote = function BC_syncToRemote(target, cb, context){
+      initRemoteSync()
       var source = 'BrowserCouch:' + dbName
       var couch = new Couch({url: target})
       //console.log('bulkDocs: ' + JSON.stringify(bulkDocs));
@@ -1099,6 +1110,7 @@ var BrowserCouch = function(opts){
             repInfo.source_last_seq = self.lastSeq()
             couch.put(repInfoID, repInfo, function(reply, status){
               //console.log(repInfoID + ': ' + status)
+              endRemoteSync()
               if (reply.ok)
                 if (cb) cb.call(context, reply, status)
             })
@@ -1108,6 +1120,7 @@ var BrowserCouch = function(opts){
     }
     
     self.syncFromRemote = function BC_syncFromRemote(source, cb, context){
+      initRemoteSync()
       var self = this;
       var target = 'BrowserCouch:' + dbName;
       var couch = new Couch({url: source});
@@ -1117,9 +1130,58 @@ var BrowserCouch = function(opts){
       function finish(repInfo, changes){
             repInfo.source_last_seq = changes.last_seq
             couch.put(repInfoID, repInfo, function(reply, status){
+              endRemoteSync()
               if (cb) cb.call(context, changes, status)
             })
-        }
+      }
+      
+      function fastMerge(repInfo){
+          couch.get('_changes', {
+              include_docs: true, 
+              since: since
+          }, function(changes, status){
+              if (!changes || changes.error){
+                if (cb) cb.call(context, changes, status)
+                return
+              }
+              changes.results.forEach(function(change){
+                  self.put(change.doc, {new_edits: false})
+              })
+              finish(repInfo, changes)
+          })
+      }
+      
+      function slowMerge(since, repInfo){
+          couch.get('_changes', {since: since}, function(changes, status){
+            if (!changes || changes.error){
+              if (cb) cb.call(context, changes, status)
+              return
+            }
+
+            var queue = changes.results.slice(0);
+            // there is danger of stackoverflow here if there are too many changes.
+            // is there a better way?
+            function pullNext(){
+              if (queue.length == 0){
+                finish(repInfo, changes)
+                return
+              }
+              var next = queue.shift()
+              var open_revs
+              couch.get(next.id, {
+                open_revs: next.changes.map(function(c){return c.rev}),
+                revs: true,
+                latest: true
+              }, function(results, status){
+                var doc = results[0].ok
+                if (doc)
+                  self.put(doc, {new_edits: false})
+                pullNext()
+              })
+            }
+            pullNext()
+          })
+      }
       
       couch.get(repInfoID, null, function(repInfo, status){
         if (!repInfo){
@@ -1134,33 +1196,10 @@ var BrowserCouch = function(opts){
           }
         }
         var since = repInfo.source_last_seq
-        couch.get('_changes', {include_docs: true, since: since}, function(changes, status){
-          if (!changes || changes.error){
-            if (cb) cb.call(context, changes, status)
-            return
-          }
-          
-          var queue = changes.results.slice(0);
-          function pullNext(){
-            if (queue.length == 0){
-              finish(repInfo, changes)
-              return
-            }
-            var next = queue.shift()
-            var open_revs
-            couch.get(next.id, {
-              open_revs: next.changes.map(function(c){return c.rev}),
-              revs: true,
-              latest: true
-            }, function(results, status){
-              var doc = results[0].ok
-              if (doc)
-                self.put(doc, {new_edits: false})
-              pullNext()
-            })
-          }
-          pullNext()
-        })
+        if (since == 0)
+            fastMerge(repInfo)
+        else
+            slowMerge(since, repInfo)
       })
     }
     

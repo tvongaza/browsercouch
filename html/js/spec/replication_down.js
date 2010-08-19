@@ -123,3 +123,13 @@ describe('BrowserCouch Replicate down', {async: true})
     })
   })
   
+  .should('prevent doing more than one remote sync at a time', function(){
+    var self = this
+    self.db.syncFromRemote(self.couch.baseUrl, function(reply, status){
+    })
+    expect(function(){
+      self.db.syncFromRemote(self.couch.baseUrl, function(reply, status){})
+    }).toRaise("Tried to sync remotely while another sync is in progress.")
+    self.finish()
+  })
+  
