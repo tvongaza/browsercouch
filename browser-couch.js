@@ -780,16 +780,20 @@ var BrowserCouch = function(opts){
               obj._rev = (revIndex(obj)+1) + '-' + revId;
             }else if (orig && obj._rev != orig._rev){
               function hasMatchingRev(rev, revisions){
-                for (var i = 0; i < revisions.ids.length; i++){
-                  if (rev == (revisions.start - i) + '-' + revisions.ids[i])
-                    return true
-                }
+                  for (var i = 0; i < revisions.ids.length; i++){
+                    if (rev == (revisions.start - i) + '-' + revisions.ids[i])
+                      return true
+                  }
                 return false
+              }
+              
+              if (hasMatchingRev(obj._rev, docInfo.revisions)){
+                // If we already have this rev, do nothing
+                return
               }
               
               var revisions = obj._revisions
               if (!revisions || !hasMatchingRev(orig._rev, revisions)){
-              
                 var winner;
                 // use deterministic winner picking algorithm
                 if (revIndex(obj) > revIndex(orig))
@@ -807,7 +811,7 @@ var BrowserCouch = function(opts){
                 if (!docInfo._conflict_revisions)
                   docInfo._conflict_revisions = {}
                 docInfo._conflict_revisions[loser._rev] = loser
-              }
+              } 
             }
           }
           if (!orig && !obj._deleted){
@@ -1075,11 +1079,17 @@ var BrowserCouch = function(opts){
       var source = 'BrowserCouch:' + dbName
       var couch = new Couch({url: target})
       //console.log('bulkDocs: ' + JSON.stringify(bulkDocs));
-
+      cb = cb ? (function(){
+        var oldCb = cb
+        return function(repInfo, status){
+          endRemoteSync()
+          oldCb.call(this, repInfo, status)
+        }
+      })() : endRemoteSync
       var repInfoID = this.upRepInfoID(couch.baseUrl)
       couch.get(repInfoID, null, function(repInfo, status){
         if (!status){
-          if (cb) cb.call(context, repInfo, status)
+          cb.call(context, repInfo, status)
           return
         }
         if (repInfo.error){
@@ -1092,27 +1102,26 @@ var BrowserCouch = function(opts){
         var since = repInfo.source_last_seq
         var changes = this.getChanges({since: since});
         if (changes.results.length == 0){
-          if (cb) cb.call(context, repInfo, status)
+          cb.call(context, repInfo, status)
           return
         }
         var bulkDocs = this.createBulkDocs(changes);
         couch.post('_bulk_docs', bulkDocs, function(reply, status){
           if (!reply || reply.error){
-            if (cb) cb.call(context, reply, status)
+            cb.call(context, reply, status)
             return
           }
           couch.post('_ensure_full_commit', 'true', function(reply, status){
             //console.log('_ensure_full_commit: ' + status)
             if (!reply || reply.error){
-              if (cb) cb.call(context, reply, status)
+              cb.call(context, reply, status)
               return
             }
             repInfo.source_last_seq = self.lastSeq()
             couch.put(repInfoID, repInfo, function(reply, status){
               //console.log(repInfoID + ': ' + status)
-              endRemoteSync()
               if (reply.ok)
-                if (cb) cb.call(context, reply, status)
+                cb.call(context, reply, status)
             })
           }, this)
         }, this)
@@ -1122,6 +1131,14 @@ var BrowserCouch = function(opts){
     self.syncFromRemote = function BC_syncFromRemote(source, cb, context){
       initRemoteSync()
       var self = this;
+      
+      cb = cb ? (function(){
+        var oldCb = cb
+        return function(repInfo, status){
+          endRemoteSync()
+          oldCb.call(this, repInfo, status)
+        }
+      })() : endRemoteSync
       var target = 'BrowserCouch:' + dbName;
       var couch = new Couch({url: source});
       
@@ -1131,17 +1148,17 @@ var BrowserCouch = function(opts){
             repInfo.source_last_seq = changes.last_seq
             couch.put(repInfoID, repInfo, function(reply, status){
               endRemoteSync()
-              if (cb) cb.call(context, changes, status)
+              cb.call(context, changes, status)
             })
       }
       
       function fastMerge(repInfo){
           couch.get('_changes', {
               include_docs: true, 
-              since: since
+              since: 0
           }, function(changes, status){
               if (!changes || changes.error){
-                if (cb) cb.call(context, changes, status)
+                cb.call(context, changes, status)
                 return
               }
               changes.results.forEach(function(change){
@@ -1154,7 +1171,7 @@ var BrowserCouch = function(opts){
       function slowMerge(since, repInfo){
           couch.get('_changes', {since: since}, function(changes, status){
             if (!changes || changes.error){
-              if (cb) cb.call(context, changes, status)
+              cb.call(context, changes, status)
               return
             }
 
@@ -1185,7 +1202,7 @@ var BrowserCouch = function(opts){
       
       couch.get(repInfoID, null, function(repInfo, status){
         if (!repInfo){
-          if (cb) cb.call(context, repInfo, status)
+          cb.call(context, repInfo, status)
           return
         }
         if (repInfo.error){

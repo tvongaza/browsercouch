@@ -1,0 +1,17 @@
+describe('Replication Scenarios')
+    .should('weird scenario which shouldnt cause conflict', function(){
+        var db1 = BrowserCouch('db1')
+        db1.wipe()
+        var db2 = BrowserCouch('db2')
+        db2.wipe()
+        db1.put({_id: '1', name: 'Ken'})
+        db1.syncToLocal(db2)
+        var ken = db1.get('1')
+        ken.name = 'Kennedy'
+        db1.put(ken)
+        db2.syncToLocal(db1)
+        var kenP = db1.get('1')
+        expect(kenP._conflicts).toBe(undefined)
+        db1.wipe()
+        db2.wipe()
+    })
